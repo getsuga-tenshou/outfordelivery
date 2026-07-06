@@ -1,0 +1,39 @@
+service_levels:
+  SAME_DAY: {sla_hours: 6,  weight: 0.15}
+  NEXT_DAY: {sla_hours: 24, weight: 0.55}
+  STANDARD: {sla_hours: 48, weight: 0.30}
+
+carriers: [PostNL, DHL, DPD, GLS]
+
+
+failure:
+  base_failure_rate: 0.05
+  bad_weather_multiplier: 2.0
+  reschedule_share: 0.90
+  returned_share: 0.10
+  max_delivery_attempts: 3
+
+
+arrivals:
+  new_parcels_per_minute: 30
+
+
+time_acceleration: 120.0
+
+
+transit_hours:
+  SAME_DAY: {mean: 4.0,  sd: 1.5}
+  NEXT_DAY: {mean: 16.0, sd: 5.0}
+  STANDARD: {mean: 32.0, sd: 8.0}
+
+
+reschedule_extra_hours: {mean: 18.0, sd: 6.0}
+
+
+min_step_wall_seconds: 0.2
+
+
+weather_effect:
+  bad_weather_dwell_multiplier: 1.3
+
+seed: 42

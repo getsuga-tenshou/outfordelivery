@@ -1,0 +1,22 @@
+weather:
+  provider: Open-Meteo
+  base_url: "https://api.open-meteo.com/v1/forecast"
+
+
+  parameters:
+    temperature: temperature_2m
+    wind_speed: wind_speed_10m
+    precipitation: precipitation
+  wind_speed_unit: ms
+  poll_seconds: 600
+
+  bad_weather:
+    wind_speed_mps: 10.0
+    precipitation: 0.5
+
+geodata:
+  provider: PDOK
+
+
+  base_url: "__CONFIRM_PDOK_ENDPOINT__"
+  api_key_env: null

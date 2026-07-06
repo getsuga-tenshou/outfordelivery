@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>outfordelivery operations</title>
+  <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.5.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.5.0/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --ink: #2b3340; --muted: #7a8699; --line: rgba(43,51,64,.10); --panel: rgba(255,255,255,.82);
+      --accent: #5e7286; --green: #2e9e5b; --amber: #e0a526; --red: #d2503e; --grey: #7b8aa1;
+      --serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: var(--ink);
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background:
+        radial-gradient(1100px 520px at 50% 4%, rgba(255,255,255,.7), rgba(255,255,255,0) 60%),
+        linear-gradient(168deg, #eaeff5 0%, #d3dde8 42%, #b4c3d5 76%, #9badc3 100%);
+      background-attachment: fixed; min-height: 100vh;
+    }
+    header { padding: 18px 30px; background: rgba(255,255,255,.5); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 14px; }
+    header .logo { width: 14px; height: 14px; border: 1.5px solid var(--ink); border-radius: 50%; }
+    header h1 { font-family: var(--serif); font-size: 24px; font-weight: 600; margin: 0; letter-spacing: 3px; }
+    header .sub { color: var(--muted); font-size: 13px; letter-spacing: .3px; }
+    header .live { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    main { padding: 10px 30px 50px; max-width: 1300px; margin: 0 auto; }
+    h2 { font-family: var(--serif); font-size: 23px; font-weight: 600; letter-spacing: .4px; color: var(--ink); margin: 34px 0 14px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+    .tile { background: var(--panel); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.6);
+      border-radius: 14px; padding: 16px 18px; box-shadow: 0 8px 28px rgba(70,90,120,.10);
+      transition: box-shadow .18s ease, transform .18s ease; }
+    .tile.clickable { cursor: pointer; }
+    .tile:hover { box-shadow: 0 12px 34px rgba(70,90,120,.16); transform: translateY(-2px); }
+    .tile .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.3px; color: var(--muted); }
+    .tile .value { font-family: var(--serif); font-size: 38px; font-weight: 600; margin-top: 2px; line-height: 1.1; }
+    .tile.green { border-left: 3px solid var(--green); } .tile.amber { border-left: 3px solid var(--amber); }
+    .tile.red { border-left: 3px solid var(--red); } .tile.grey { border-left: 3px solid var(--grey); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .card { background: var(--panel); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.6);
+      border-radius: 14px; padding: 18px 20px; box-shadow: 0 8px 28px rgba(70,90,120,.10); }
+    .card h3 { margin: 0 0 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 600; }
+    .chartbox { position: relative; height: 260px; }
+    #map { height: 470px; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.6); box-shadow: 0 8px 28px rgba(70,90,120,.10); }
+    .legend { display: flex; gap: 18px; font-size: 12px; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .overlay { position: fixed; inset: 0; background: rgba(30,40,55,.28); backdrop-filter: blur(2px);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 40; }
+    .overlay.open { opacity: 1; pointer-events: auto; }
+    .drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 430px; max-width: 92vw;
+      background: rgba(255,255,255,.93); backdrop-filter: blur(18px); border-left: 1px solid rgba(255,255,255,.6);
+      box-shadow: -16px 0 44px rgba(40,55,75,.18); transform: translateX(100%);
+      transition: transform .26s cubic-bezier(.4,0,.2,1); z-index: 50; display: flex; flex-direction: column; }
+    .drawer.open { transform: translateX(0); }
+    .dhead { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+    .dhead h3 { font-family: var(--serif); font-size: 21px; margin: 0; font-weight: 600; }
+    .dhead .count { color: var(--muted); font-size: 12px; }
+    .dhead .x { margin-left: auto; cursor: pointer; color: var(--muted); font-size: 22px; line-height: 1; background: none; border: none; }
+    .dbody { padding: 10px 14px 22px; overflow-y: auto; flex: 1; }
+    .prow { padding: 11px 12px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 11px; transition: background .12s; }
+    .prow:hover { background: rgba(94,114,134,.10); }
+    .prow .pid { font-weight: 600; font-size: 13px; }
+    .prow .pmeta { color: var(--muted); font-size: 12px; margin-top: 1px; }
+    .prow .pright { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pill { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .detail .row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 6px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .detail .row .k { color: var(--muted); } .detail .row .v { font-weight: 500; text-align: right; }
+    .backlink { cursor: pointer; color: var(--accent); font-size: 13px; background: none; border: none; padding: 6px; }
+    @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo"></span>
+    <h1>outfordelivery</h1>
+    <span class="sub">live parcel operations</span>
+    <span class="live" id="updated">connecting...</span>
+  </header>
+  <main>
+    <h2>Network status</h2>
+    <div class="tiles" id="status-tiles"></div>
+
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h3>Throughput by hub</h3>
+        <div class="chartbox"><canvas id="hubChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>SLA risk (click a tile for the parcels)</h3>
+        <div class="tiles" id="sla-tiles"></div>
+      </div>
+    </div>
+
+    <h2>Across the Netherlands</h2>
+    <div id="map"></div>
+    <div class="legend">
+      <span><span class="dot" style="background:#2e9e5b"></span>on time</span>
+      <span><span class="dot" style="background:#e0a526"></span>at risk</span>
+      <span><span class="dot" style="background:#d2503e"></span>breached</span>
+      <span><span class="dot" style="background:#7b8aa1"></span>delivered or returned</span>
+      <span style="color:#9aa3b2">click a point for details</span>
+    </div>
+
+    <h2>History</h2>
+    <div class="grid2">
+      <div class="card"><h3>Delivery funnel</h3><div class="chartbox"><canvas id="funnelChart"></canvas></div></div>
+      <div class="card"><h3>On-time rate by region</h3><div class="chartbox"><canvas id="onTimeChart"></canvas></div></div>
+      <div class="card"><h3>Failure rate by region</h3><div class="chartbox"><canvas id="failChart"></canvas></div></div>
+      <div class="card"><h3>Weather impact on failure rate</h3><div class="chartbox"><canvas id="weatherChart"></canvas></div></div>
+    </div>
+  </main>
+
+  <div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+  <aside class="drawer" id="drawer">
+    <div class="dhead">
+      <h3 id="drawer-title">Parcels</h3>
+      <span class="count" id="drawer-count"></span>
+      <button class="x" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="dbody" id="drawer-body"></div>
+  </aside>
+
+  <script>
+    const TICK = "#7a8699", GRID = "rgba(43,51,64,.08)";
+    const SLA_LABEL = { on_time: "On time", at_risk: "At risk", breached: "Breached", delivered: "Delivered", unknown: "Unknown" };
+    const SLA_DOT = { on_time: "#2e9e5b", at_risk: "#e0a526", breached: "#d2503e", delivered: "#7b8aa1", unknown: "#9aa3b2" };
+
+    async function getJSON(url) { const r = await fetch(url); return r.json(); }
+    const titlecase = (s) => (s || "").replaceAll("_", " ").toLowerCase();
+
+    function tile(label, value, cls, onclick) {
+      const attr = onclick ? ` clickable" onclick="${onclick}` : "";
+      return `<div class="tile ${cls || ''}${attr}"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+    }
+
+    let hubChart, funnelChart, onTimeChart, failChart, weatherChart;
+    function barChart(id, labels, data, color, yMax) {
+      const yScale = { beginAtZero: true, ticks: { color: TICK }, grid: { color: GRID } };
+      if (yMax) yScale.max = yMax;
+      return new Chart(document.getElementById(id), {
+        type: "bar",
+        data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 4, maxBarThickness: 46 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+          scales: { x: { ticks: { color: TICK }, grid: { display: false } }, y: yScale } }
+      });
+    }
+
+    async function refreshLive() {
+      const s = await getJSON("/api/live/summary");
+      const order = ["CREATED","LABEL_PRINTED","COLLECTED","AT_SORTING_HUB","IN_TRANSIT","OUT_FOR_DELIVERY","DELIVERED","DELIVERY_FAILED","RESCHEDULED","RETURNED"];
+      let tiles = tile("Total parcels", s.total) + tile("In flight", s.in_flight, "grey");
+      order.forEach(k => { if (s.by_status[k]) tiles += tile(titlecase(k), s.by_status[k]); });
+      document.getElementById("status-tiles").innerHTML = tiles;
+
+      document.getElementById("sla-tiles").innerHTML =
+        tile("On time", s.sla.on_time, "green", "openBucket('on_time')") +
+        tile("At risk", s.sla.at_risk, "amber", "openBucket('at_risk')") +
+        tile("Breached", s.sla.breached, "red", "openBucket('breached')") +
+        tile("Delivered", s.sla.delivered, "grey", "openBucket('delivered')");
+
+      const hubs = Object.keys(s.by_hub).sort();
+      const counts = hubs.map(h => s.by_hub[h]);
+      if (!hubChart) hubChart = barChart("hubChart", hubs, counts, "#5e7286");
+      else { hubChart.data.labels = hubs; hubChart.data.datasets[0].data = counts; hubChart.update(); }
+
+      document.getElementById("updated").textContent = "updated " + new Date().toLocaleTimeString();
+      refreshMap();
+    }
+
+    let map, mapReady = false;
+    function initMap() {
+      map = new maplibregl.Map({
+        container: "map", center: [5.4, 52.2], zoom: 6.4,
+        style: { version: 8,
+          sources: { base: { type: "raster", tileSize: 256,
+            tiles: ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"], attribution: "© OpenStreetMap, © CARTO" } },
+          layers: [{ id: "base", type: "raster", source: "base" }] }
+      });
+      map.on("load", () => {
+        map.resize();
+        map.addSource("parcels", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        map.addLayer({ id: "parcels", type: "circle", source: "parcels",
+          paint: { "circle-radius": 5, "circle-opacity": 0.9, "circle-stroke-width": 0.8, "circle-stroke-color": "#ffffff",
+            "circle-color": ["match", ["get", "sla"], "breached", "#d2503e", "at_risk", "#e0a526", "on_time", "#2e9e5b", "delivered", "#7b8aa1", "#9aa3b2"] } });
+        map.on("click", "parcels", (e) => { if (e.features[0]) openParcel(e.features[0].properties.parcel_id); });
+        map.on("mouseenter", "parcels", () => map.getCanvas().style.cursor = "pointer");
+        map.on("mouseleave", "parcels", () => map.getCanvas().style.cursor = "");
+        mapReady = true; refreshMap();
+      });
+      setTimeout(() => map && map.resize(), 500);
+      window.addEventListener("resize", () => map && map.resize());
+    }
+    async function refreshMap() {
+      if (!mapReady) return;
+      const m = await getJSON("/api/live/map");
+      const features = m.points.map(p => ({ type: "Feature",
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] }, properties: { sla: p.sla, parcel_id: p.parcel_id } }));
+      map.getSource("parcels").setData({ type: "FeatureCollection", features });
+    }
+
+    function openDrawer() { document.getElementById("drawer").classList.add("open"); document.getElementById("overlay").classList.add("open"); }
+    function closeDrawer() { document.getElementById("drawer").classList.remove("open"); document.getElementById("overlay").classList.remove("open"); }
+
+    async function openBucket(sla) {
+      document.getElementById("drawer-title").textContent = SLA_LABEL[sla] || sla;
+      document.getElementById("drawer-count").textContent = "";
+      const body = document.getElementById("drawer-body");
+      body.innerHTML = "<div style='padding:14px;color:#7a8699'>loading...</div>";
+      openDrawer();
+      const d = await getJSON(`/api/live/parcels?sla=${sla}&limit=200`);
+      document.getElementById("drawer-count").textContent = d.total > d.shown ? `showing ${d.shown} of ${d.total}` : `${d.total}`;
+      if (!d.parcels.length) { body.innerHTML = "<div style='padding:14px;color:#7a8699'>no parcels in this bucket.</div>"; return; }
+      body.innerHTML = d.parcels.map(p => {
+        const rem = p.sim_hours_remaining;
+        const right = rem == null ? "" : (rem < 0 ? `overdue ${Math.abs(rem)}h` : `${rem}h left`);
+        return `<div class="prow" onclick="openParcel('${p.parcel_id}')">
+          <span class="pill" style="background:${SLA_DOT[p.sla]}"></span>
+          <div><div class="pid">${p.parcel_id}</div><div class="pmeta">${titlecase(p.status)} &middot; ${p.service_level || ''} &middot; ${p.region || ''}</div></div>
+          <div class="pright">${right}</div></div>`;
+      }).join("");
+    }
+
+    function fmt(iso) { if (!iso) return "n/a"; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(); }
+
+    async function openParcel(id) {
+      document.getElementById("drawer-title").textContent = id;
+      document.getElementById("drawer-count").textContent = "";
+      const body = document.getElementById("drawer-body");
+      body.innerHTML = "<div style='padding:14px;color:#7a8699'>loading...</div>";
+      openDrawer();
+      const p = await getJSON(`/api/live/parcel/${id}`);
+      if (p.error) { body.innerHTML = "<div style='padding:14px;color:#7a8699'>not found.</div>"; return; }
+      const rem = p.sim_hours_remaining;
+      const remTxt = rem == null ? "n/a" : (rem < 0 ? `overdue ${Math.abs(rem)} sim-h` : `${rem} sim-h left`);
+      const row = (k, v) => `<div class="row"><span class="k">${k}</span><span class="v">${(v ?? "n/a")}</span></div>`;
+      body.innerHTML = `<div class="detail">
+        ${row("SLA risk", `<span class="pill" style="background:${SLA_DOT[p.sla]};margin-right:6px"></span>${SLA_LABEL[p.sla] || p.sla}`)}
+        ${row("Status", titlecase(p.status))}
+        ${row("Service level", p.service_level)}
+        ${row("Time vs SLA", remTxt)}
+        ${row("Destination region", p.region)}
+        ${row("Destination postcode", p.destination_postcode)}
+        ${row("Carrier", p.carrier)}
+        ${row("Origin hub", p.origin_hub)}
+        ${row("Current hub", p.hub_id)}
+        ${row("Event version", p.version)}
+        ${row("Weather", p.weather_bad == null ? "n/a" : (p.weather_bad ? "bad" : "ok"))}
+        ${row("Created", fmt(p.created_at))}
+        ${row("Promised by", fmt(p.promised_by))}
+        ${row("Last scan", fmt(p.last_scan))}
+      </div>`;
+      if (p.lat && p.lon && mapReady) map.flyTo({ center: [p.lon, p.lat], zoom: 9, speed: 0.8 });
+    }
+
+    async function loadHistory() {
+      const funnel = (await getJSON("/api/history/funnel")).rows;
+      if (Array.isArray(funnel)) funnelChart = barChart("funnelChart", funnel.map(r => r.event_type), funnel.map(r => r.parcels), "#5e7286");
+      const ot = (await getJSON("/api/history/on_time")).rows;
+      if (Array.isArray(ot)) onTimeChart = barChart("onTimeChart", ot.map(r => r.region), ot.map(r => r.on_time_rate), "#2e9e5b", 1);
+      const fa = (await getJSON("/api/history/failures")).rows;
+      if (Array.isArray(fa)) failChart = barChart("failChart", fa.map(r => r.region), fa.map(r => r.failure_rate), "#d2503e");
+      const w = (await getJSON("/api/history/weather")).rows;
+      if (Array.isArray(w)) weatherChart = barChart("weatherChart", w.map(r => r.bad_weather ? "bad weather" : "good weather"), w.map(r => r.failure_rate), "#e0a526");
+    }
+
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+    initMap();
+    refreshLive();
+    loadHistory();
+    setInterval(refreshLive, 5000);
+  </script>
+</body>
+</html>

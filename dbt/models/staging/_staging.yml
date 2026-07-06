@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_parcel_events
+    description: "Typed, deduplicated parcel events from the Silver lake."
+    columns:
+      - name: event_id
+        description: "Unique event id."
+        tests: [not_null, unique]
+      - name: parcel_id
+        tests: [not_null]
+      - name: event_type
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  [
+                    CREATED, LABEL_PRINTED, COLLECTED, AT_SORTING_HUB, IN_TRANSIT,
+                    OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RESCHEDULED, RETURNED,
+                  ]
+      - name: version
+        tests: [not_null]
+
+  - name: stg_parcels
+    description: "Parcel reference dimension (one row per parcel)."
+    columns:
+      - name: parcel_id
+        tests: [not_null, unique]
+      - name: service_level
+        tests:
+          - accepted_values:
+              arguments:
+                values: [SAME_DAY, NEXT_DAY, STANDARD]
+      - name: sla_hours
+        tests: [not_null]

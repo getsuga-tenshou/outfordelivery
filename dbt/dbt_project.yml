@@ -1,0 +1,21 @@
+name: "outfordelivery"
+version: "1.0.0"
+config-version: 2
+profile: "outfordelivery"
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+
+vars:
+  silver_events_path: "s3://outfordelivery-lake/silver/parcel_events"
+  parcels_path: "../data/parcels.jsonl"
+  time_acceleration: 120
+
+models:
+  outfordelivery:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

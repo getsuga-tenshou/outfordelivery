@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: dim_parcels
+    description: "Parcel dimension, one row per parcel."
+    columns:
+      - name: parcel_id
+        tests: [not_null, unique]
+
+  - name: fct_parcel_events
+    description: "Event fact joined to the parcel dimension."
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: parcel_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_parcels')
+                field: parcel_id
+              config:
+                severity: warn
+
+  - name: gold_delivery_funnel
+    description: "Counts of events and parcels at each lifecycle stage."
+    columns:
+      - name: event_type
+        tests: [not_null, unique]
+
+  - name: gold_on_time_by_region
+    description: "On-time delivery rate by destination region."
+    columns:
+      - name: region
+        tests: [not_null]
+
+  - name: gold_failure_analysis
+    description: "Failure and return rates by destination region."
+    columns:
+      - name: region
+        tests: [not_null]
+
+  - name: gold_weather_impact
+    description: "Delivery failure rate under bad vs good weather."
+    columns:
+      - name: bad_weather
+        tests: [not_null]

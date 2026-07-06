@@ -1,0 +1,26 @@
+outfordelivery:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "outfordelivery.duckdb"
+      threads: 1
+      extensions:
+        - httpfs
+      settings:
+        s3_endpoint: "{{ env_var('MINIO_ENDPOINT', 'localhost:9000') }}"
+        s3_access_key_id: "{{ env_var('MINIO_ROOT_USER', 'minioadmin') }}"
+        s3_secret_access_key: "{{ env_var('MINIO_ROOT_PASSWORD', 'minioadmin') }}"
+        s3_use_ssl: false
+        s3_url_style: "path"
+        s3_region: "eu-west-1"
+
+
+    athena:
+      type: athena
+      s3_staging_dir: "{{ env_var('OFD_ATHENA_STAGING', 's3://REPLACE-athena-results/dbt/') }}"
+      region_name: "{{ env_var('AWS_REGION', 'eu-central-1') }}"
+      database: "{{ env_var('OFD_ATHENA_CATALOG', 'awsdatacatalog') }}"
+      schema: "{{ env_var('OFD_GLUE_DB', 'outfordelivery') }}"
+      work_group: "{{ env_var('OFD_ATHENA_WORKGROUP', 'primary') }}"
+      threads: 2

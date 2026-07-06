@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "ParcelEvent",
+  "namespace": "com.outfordelivery.events",
+  "doc": "A single scan in a parcel's delivery lifecycle. Published to the Kafka topic parcel.events, keyed by parcel_id so events for one parcel stay ordered.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Globally unique id for this event, used for idempotent dedup."},
+    {"name": "parcel_id", "type": "string", "doc": "Parcel this event belongs to. Kafka partition key."},
+    {"name": "event_type", "type": {"type": "enum", "name": "EventType", "symbols": ["CREATED", "LABEL_PRINTED", "COLLECTED", "AT_SORTING_HUB", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "DELIVERY_FAILED", "RESCHEDULED", "RETURNED"]}, "doc": "Lifecycle transition. See the state machine in plan section 6."},
+    {"name": "hub_id", "type": "string", "doc": "Hub or location where the scan happened, e.g. AMS."},
+    {"name": "lat", "type": "double", "doc": "Latitude of the scan, for the map. Validated to NL bounds in Spark."},
+    {"name": "lon", "type": "double", "doc": "Longitude of the scan, for the map."},
+    {"name": "event_ts", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Event time, when the scan happened, epoch millis UTC."},
+    {"name": "status", "type": "string", "doc": "Derived status carried for convenience. Authoritative current status is resolved in Spark by version."},
+    {"name": "version", "type": "int", "doc": "Monotonic per-parcel version, for ordering and idempotency."}
+  ]
+}

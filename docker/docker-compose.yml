@@ -1,0 +1,123 @@
+name: outfordelivery
+
+networks:
+  ofd-net:
+    driver: bridge
+
+volumes:
+  redpanda-data:
+  minio-data:
+  dynamodb-data:
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.1.7
+    container_name: ofd-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --overprovisioned
+      - --node-id=0
+      - --kafka-addr=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      - --advertise-kafka-addr=INTERNAL://redpanda:29092,EXTERNAL://localhost:9092
+      - --pandaproxy-addr=0.0.0.0:8082
+      - --advertise-pandaproxy-addr=localhost:8082
+      - --schema-registry-addr=0.0.0.0:8081
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "9092:9092"
+      - "8081:8081"
+      - "8082:8082"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    networks: [ofd-net]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.5.2
+    container_name: ofd-console
+    depends_on:
+      redpanda:
+        condition: service_started
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+    ports:
+      - "8080:8080"
+    networks: [ofd-net]
+
+  minio:
+    image: minio/minio:latest
+    container_name: ofd-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks: [ofd-net]
+
+  createbuckets:
+    image: minio/mc:latest
+    container_name: ofd-createbuckets
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do echo 'waiting for minio...'; sleep 2; done;
+      mc mb -p local/${MINIO_BUCKET:-outfordelivery-lake};
+      echo 'bucket ready: ${MINIO_BUCKET:-outfordelivery-lake}';
+      "
+    networks: [ofd-net]
+
+  dynamodb:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: ofd-dynamodb
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    user: root
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+    networks: [ofd-net]
+
+
+  spark-master:
+    image: apache/spark:3.5.8
+    container_name: ofd-spark-master
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "7077:7077"
+      - "8090:8080"
+    volumes:
+      - ..:/opt/outfordelivery
+    networks: [ofd-net]
+
+  spark-worker:
+    image: apache/spark:3.5.8
+    container_name: ofd-spark-worker
+    depends_on:
+      spark-master:
+        condition: service_started
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077", "--cores", "2", "--memory", "2g"]
+    ports:
+      - "8091:8081"
+    volumes:
+      - ..:/opt/outfordelivery
+    networks: [ofd-net]

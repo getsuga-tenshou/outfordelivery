@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "Parcel",
+  "namespace": "com.outfordelivery.reference",
+  "doc": "Reference data for a parcel, created once when the parcel is created.",
+  "fields": [
+    {"name": "parcel_id", "type": "string", "doc": "Unique parcel id."},
+    {"name": "origin_hub", "type": "string", "doc": "One of the configured hubs, e.g. AMS, RTM. See config/network.yaml."},
+    {"name": "destination_postcode", "type": "string", "doc": "Dutch postcode, format '1234 AB'."},
+    {"name": "destination_region", "type": "string", "doc": "Derived from the postcode first digit. See config/network.yaml."},
+    {"name": "carrier", "type": "string", "doc": "Carrier handling the parcel."},
+    {"name": "service_level", "type": {"type": "enum", "name": "ServiceLevel", "symbols": ["SAME_DAY", "NEXT_DAY", "STANDARD"]}, "doc": "Promised service level."},
+    {"name": "sla_hours", "type": "int", "doc": "Derived from service_level: SAME_DAY=6, NEXT_DAY=24, STANDARD=48."},
+    {"name": "created_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the parcel was created, epoch millis UTC."},
+    {"name": "promised_by", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "created_at plus sla_hours. A parcel undelivered past this time is a breach."}
+  ]
+}

@@ -1,0 +1,50 @@
+# secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# local data, lake materialisations, spark checkpoints, logs
+data/
+.data/
+*.log
+spark-warehouse/
+checkpoints/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+*.duckdb
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+infra/lambda/*.zip
+
+# os and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# local docs and build plan, not part of the pushed repo
+/plan.md
+**/README.md
+!/README.md

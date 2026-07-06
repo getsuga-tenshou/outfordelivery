@@ -1,0 +1,73 @@
+hubs:
+  - {id: AMS, name: Amsterdam,  lat: 52.3676, lon: 4.9041}
+  - {id: RTM, name: Rotterdam,  lat: 51.9244, lon: 4.4777}
+  - {id: UTR, name: Utrecht,    lat: 52.0907, lon: 5.1214}
+  - {id: EIN, name: Eindhoven,  lat: 51.4416, lon: 5.4697}
+  - {id: DHG, name: Den Haag,   lat: 52.0705, lon: 4.3007}
+  - {id: GRO, name: Groningen,  lat: 53.2194, lon: 6.5665}
+  - {id: ZWO, name: Zwolle,     lat: 52.5168, lon: 6.0830}
+  - {id: MST, name: Maastricht, lat: 50.8514, lon: 5.6910}
+
+
+towns:
+  - {name: Amsterdam,    lat: 52.3676, lon: 4.9041, postcode: "1011", region: Noord-Holland}
+  - {name: Haarlem,      lat: 52.3874, lon: 4.6462, postcode: "2011", region: Noord-Holland}
+  - {name: Alkmaar,      lat: 52.6324, lon: 4.7534, postcode: "1811", region: Noord-Holland}
+  - {name: Hilversum,    lat: 52.2233, lon: 5.1719, postcode: "1211", region: Noord-Holland}
+  - {name: Purmerend,    lat: 52.5050, lon: 4.9597, postcode: "1441", region: Noord-Holland}
+  - {name: Hoorn,        lat: 52.6425, lon: 5.0597, postcode: "1621", region: Noord-Holland}
+  - {name: Rotterdam,    lat: 51.9244, lon: 4.4777, postcode: "3011", region: Zuid-Holland}
+  - {name: Den Haag,     lat: 52.0705, lon: 4.3007, postcode: "2511", region: Zuid-Holland}
+  - {name: Leiden,       lat: 52.1601, lon: 4.4970, postcode: "2311", region: Zuid-Holland}
+  - {name: Delft,        lat: 52.0116, lon: 4.3571, postcode: "2611", region: Zuid-Holland}
+  - {name: Dordrecht,    lat: 51.8133, lon: 4.6901, postcode: "3311", region: Zuid-Holland}
+  - {name: Zoetermeer,   lat: 52.0575, lon: 4.4931, postcode: "2711", region: Zuid-Holland}
+  - {name: Gouda,        lat: 52.0115, lon: 4.7104, postcode: "2801", region: Zuid-Holland}
+  - {name: Schiedam,     lat: 51.9197, lon: 4.3889, postcode: "3111", region: Zuid-Holland}
+  - {name: Utrecht,      lat: 52.0907, lon: 5.1214, postcode: "3511", region: Utrecht}
+  - {name: Amersfoort,   lat: 52.1561, lon: 5.3878, postcode: "3811", region: Utrecht}
+  - {name: Veenendaal,   lat: 52.0286, lon: 5.5581, postcode: "3901", region: Utrecht}
+  - {name: Eindhoven,    lat: 51.4416, lon: 5.4697, postcode: "5611", region: Noord-Brabant}
+  - {name: Tilburg,      lat: 51.5555, lon: 5.0913, postcode: "5011", region: Noord-Brabant}
+  - {name: Breda,        lat: 51.5719, lon: 4.7683, postcode: "4811", region: Noord-Brabant}
+  - {name: Den Bosch,    lat: 51.6978, lon: 5.3037, postcode: "5211", region: Noord-Brabant}
+  - {name: Helmond,      lat: 51.4793, lon: 5.6570, postcode: "5701", region: Noord-Brabant}
+  - {name: Oss,          lat: 51.7650, lon: 5.5237, postcode: "5341", region: Noord-Brabant}
+  - {name: Roosendaal,   lat: 51.5306, lon: 4.4654, postcode: "4701", region: Noord-Brabant}
+  - {name: Groningen,    lat: 53.2194, lon: 6.5665, postcode: "9711", region: Groningen}
+  - {name: Leeuwarden,   lat: 53.2012, lon: 5.7999, postcode: "8911", region: Friesland}
+  - {name: Assen,        lat: 52.9925, lon: 6.5649, postcode: "9401", region: Drenthe}
+  - {name: Emmen,        lat: 52.7850, lon: 6.8970, postcode: "7811", region: Drenthe}
+  - {name: Zwolle,       lat: 52.5168, lon: 6.0830, postcode: "8011", region: Overijssel}
+  - {name: Enschede,     lat: 52.2215, lon: 6.8937, postcode: "7511", region: Overijssel}
+  - {name: Deventer,     lat: 52.2552, lon: 6.1639, postcode: "7411", region: Overijssel}
+  - {name: Hengelo,      lat: 52.2659, lon: 6.7931, postcode: "7551", region: Overijssel}
+  - {name: Almere,       lat: 52.3508, lon: 5.2647, postcode: "1315", region: Flevoland}
+  - {name: Lelystad,     lat: 52.5185, lon: 5.4714, postcode: "8211", region: Flevoland}
+  - {name: Nijmegen,     lat: 51.8126, lon: 5.8372, postcode: "6511", region: Gelderland}
+  - {name: Arnhem,       lat: 51.9851, lon: 5.8987, postcode: "6811", region: Gelderland}
+  - {name: Apeldoorn,    lat: 52.2112, lon: 5.9699, postcode: "7311", region: Gelderland}
+  - {name: Ede,          lat: 52.0402, lon: 5.6649, postcode: "6711", region: Gelderland}
+  - {name: Maastricht,   lat: 50.8514, lon: 5.6910, postcode: "6211", region: Limburg}
+  - {name: Heerlen,      lat: 50.8882, lon: 5.9795, postcode: "6411", region: Limburg}
+  - {name: Venlo,        lat: 51.3704, lon: 6.1724, postcode: "5911", region: Limburg}
+  - {name: Sittard,      lat: 51.0017, lon: 5.8690, postcode: "6131", region: Limburg}
+
+
+postcode_regions:
+  "1": Noord-Holland
+  "2": Zuid-Holland
+  "3": Rotterdam-Utrecht
+  "4": Zeeland-West-Brabant
+  "5": Noord-Brabant
+  "6": Limburg-Gelderland
+  "7": Overijssel-Gelderland
+  "8": Flevoland-Friesland
+  "9": Groningen-Drenthe
+
+
+nl_bounding_box:
+  lat_min: 50.75
+  lat_max: 53.55
+  lon_min: 3.36
+  lon_max: 7.23
