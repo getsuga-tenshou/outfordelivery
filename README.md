@@ -1,8 +1,7 @@
 # outfordelivery
 
-A real-time parcel delivery operations pipeline. It simulates parcels moving through a Dutch delivery network, streams their lifecycle events through Kafka, processes them with Spark Structured Streaming into a Delta lakehouse, and serves both a live operations dashboard and a queryable history. It runs end to end on a laptop with Docker at zero cost, and can be deployed to AWS with Terraform.
+A real-time parcel delivery operations pipeline. It simulates parcels moving through a Dutch delivery network, streams their lifecycle events through Kafka, processes them with Spark Structured Streaming into a Delta lakehouse, and serves a live operations dashboard. It runs end to end on a laptop with Docker at zero cost, and can be deployed to AWS with Terraform.
 
-This is a portfolio project: a built demonstration rather than a production system.
 
 ## Tech stack
 
@@ -31,7 +30,7 @@ Create a virtual environment and stream events into Kafka:
 
 ```
 python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate         
 pip install -r requirements.txt
 python -m simulator.simulate --produce
 ```
@@ -56,7 +55,7 @@ The `infra/` folder holds the Terraform for a cloud deployment: an S3 data lake,
 
 ```
 cd infra
-cp terraform.tfvars.example terraform.tfvars   # set allowed_cidr and alert_email
+cp terraform.tfvars.example terraform.tfvars   # set the allowed_cidr and alert_email
 terraform init
 terraform plan
 terraform apply
