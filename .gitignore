@@ -47,15 +47,5 @@ Thumbs.db
 .idea/
 .vscode/
 
-# local docs and build plan, not part of the pushed repo
-/plan.md
-/tickets/
-/docs/
-*.md
-*.rst
-*.pdf
-*.doc
-*.docx
-
 # databricks
 .databricks/
