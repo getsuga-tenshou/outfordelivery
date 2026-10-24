@@ -1,0 +1,31 @@
+resources:
+  jobs:
+    verify_processing:
+      name: ofd-verify-processing
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      parameters:
+      - name: batch_id
+        default: ''
+      environments:
+      - environment_key: default
+        spec:
+          environment_version: ${var.runtime_version}
+          dependencies:
+          - pyyaml
+          - fastavro
+          - boto3
+          - requests
+      tasks:
+      - task_key: verify_processing
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/verify_processing.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --batch-id
+          - '{{job.parameters.batch_id}}'

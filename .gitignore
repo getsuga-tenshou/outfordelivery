@@ -4,6 +4,7 @@
 !.env.example
 *.pem
 *.key
+*.p8
 
 # python
 __pycache__/
@@ -35,8 +36,10 @@ dbt/logs/
 *.tfstate.*
 crash.log
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
 infra/lambda/*.zip
+infra/glue_libs.zip
 
 # os and editor
 .DS_Store
@@ -46,5 +49,13 @@ Thumbs.db
 
 # local docs and build plan, not part of the pushed repo
 /plan.md
-**/README.md
-!/README.md
+/tickets/
+/docs/
+*.md
+*.rst
+*.pdf
+*.doc
+*.docx
+
+# databricks
+.databricks/

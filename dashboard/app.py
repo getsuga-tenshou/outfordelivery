@@ -2,27 +2,30 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import boto3
 import duckdb
-import yaml
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from streaming.rules import TERMINAL_STATUSES, elapsed_simulated_seconds, is_breached, load_time_acceleration
+
 REPO = Path(__file__).resolve().parents[1]
-DDB_ENDPOINT = os.environ.get("OFD_DDB_ENDPOINT", "http://localhost:8000")
+DDB_ENDPOINT = os.environ.get("OFD_DDB_ENDPOINT", "http://localhost:8000") or None  # empty = real AWS DynamoDB
 DDB_TABLE = os.environ.get("OFD_DDB_TABLE", "parcel_state")
 DUCKDB_PATH = os.environ.get("OFD_DUCKDB", str(REPO / "dbt" / "outfordelivery.duckdb"))
-PARCELS_PATH = REPO / "data" / "parcels.jsonl"
-TERMINAL = {"DELIVERED", "RETURNED"}
+PARCELS_PATH = Path(os.environ.get("OFD_PARCELS_PATH") or REPO / "data" / "parcels.jsonl")
+TERMINAL = TERMINAL_STATUSES
+MARTS = {"gold_delivery_funnel", "gold_on_time_by_region", "gold_failure_analysis", "gold_weather_impact"}
 
 
 def _time_acceleration() -> float:
-    config = yaml.safe_load((REPO / "config" / "simulation.yaml").read_text(encoding="utf-8"))
-    return float(config.get("time_acceleration", 120.0))
+    return load_time_acceleration(REPO)
 
 
 def _load_dimension() -> dict:
@@ -37,12 +40,13 @@ def _load_dimension() -> dict:
 
 
 def _table():
+    # DynamoDB Local needs dummy keys; real AWS uses the default credential chain (profile, env or role).
+    local = {"aws_access_key_id": "local", "aws_secret_access_key": "local"} if DDB_ENDPOINT else {}
     return boto3.resource(
         "dynamodb",
         endpoint_url=DDB_ENDPOINT,
         region_name=os.environ.get("AWS_REGION", "eu-west-1"),
-        aws_access_key_id="local",
-        aws_secret_access_key="local",
+        **local,
     ).Table(DDB_TABLE)
 
 
@@ -69,9 +73,9 @@ def _sla_state(item: dict, dim: dict, accel: float, now: datetime) -> str:
         return "unknown"
     created = datetime.fromisoformat(parcel["created_at"])
     sla_seconds = int(parcel["sla_hours"]) * 3600
-    elapsed_sim = (now - created).total_seconds() * accel
-    if elapsed_sim > sla_seconds:
+    if is_breached(item.get("status"), created, parcel["sla_hours"], now, accel):
         return "breached"
+    elapsed_sim = elapsed_simulated_seconds(created, now, accel)
     if elapsed_sim > sla_seconds * 0.8:
         return "at_risk"
     return "on_time"
@@ -83,7 +87,7 @@ def _parcel_view(item: dict, dim: dict, accel: float, now: datetime) -> dict:
     created = parcel.get("created_at")
     sla_hours = parcel.get("sla_hours")
     if created and sla_hours is not None:
-        elapsed_sim = (now - datetime.fromisoformat(created)).total_seconds() * accel
+        elapsed_sim = elapsed_simulated_seconds(datetime.fromisoformat(created), now, accel)
         remaining = round((int(sla_hours) * 3600 - elapsed_sim) / 3600, 1)
     return {
         "parcel_id": item.get("parcel_id"),
@@ -177,14 +181,60 @@ def parcel_detail(parcel_id: str):
     return _parcel_view(item, _load_dimension(), _time_acceleration(), datetime.now(timezone.utc))
 
 
-def _mart(name: str):
+_sf_lock = threading.Lock()
+_sf_conn = None
+
+
+def _snowflake_connection():
+    global _sf_conn
+    with _sf_lock:
+        if _sf_conn is None or _sf_conn.is_closed():
+            import snowflake.connector
+
+            _sf_conn = snowflake.connector.connect(
+                account=os.environ["OFD_SF_ACCOUNT"],
+                user=os.environ["OFD_SF_USER"],
+                private_key_file=os.environ["OFD_SF_PRIVATE_KEY_PATH"],
+                private_key_file_pwd=os.environ.get("OFD_SF_PRIVATE_KEY_PASSPHRASE") or None,
+                role=os.environ.get("OFD_SF_ROLE", "OFD_READER"),
+                warehouse=os.environ.get("OFD_SF_WAREHOUSE", "OFD_WH"),
+                database=os.environ.get("OFD_SF_DATABASE", "OUTFORDELIVERY"),
+                schema=os.environ.get("OFD_SF_SCHEMA", "MARTS"),
+            )
+        return _sf_conn
+
+
+def _mart_duckdb(name: str) -> list[dict]:
+    con = duckdb.connect(DUCKDB_PATH, read_only=True)
     try:
-        con = duckdb.connect(DUCKDB_PATH, read_only=True)
         cur = con.execute(f"select * from {name}")
         cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+    finally:
         con.close()
-        return rows
+
+
+def _mart_snowflake(name: str) -> list[dict]:
+    cur = _snowflake_connection().cursor()
+    try:
+        cur.execute(f"select * from {name}")
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+    finally:
+        cur.close()
+
+
+def _normalise_row(row: dict) -> dict:
+    return {key.lower(): float(value) if isinstance(value, Decimal) else value for key, value in row.items()}
+
+
+def _mart(name: str):
+    try:
+        if name not in MARTS:
+            raise ValueError(f"unknown mart {name!r}")
+        if os.environ.get("OFD_WAREHOUSE", "duckdb").lower() == "snowflake":
+            return [_normalise_row(row) for row in _mart_snowflake(name)]
+        return _mart_duckdb(name)
     except Exception as exc:
         return {"error": str(exc)}
 

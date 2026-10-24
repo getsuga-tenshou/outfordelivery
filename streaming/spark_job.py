@@ -7,7 +7,6 @@ import os
 import sys
 from pathlib import Path
 
-import yaml
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.avro.functions import from_avro
@@ -19,9 +18,6 @@ TOPIC = os.environ.get("OFD_TOPIC", "parcel.events")
 BRONZE_PATH = f"{LAKE}/bronze/parcel_events"
 DLQ_PATH = f"{LAKE}/dlq/parcel_events"
 CHECKPOINT = f"{LAKE}/_checkpoints/bronze_parcel_events"
-
-
-STATE_FIELDS = ["version", "event_type", "status", "event_ts", "hub_id", "lat", "lon", "weather_bad"]
 
 
 def build_spark() -> SparkSession:
@@ -39,11 +35,6 @@ def build_spark() -> SparkSession:
     )
 
 
-def load_network():
-    network = yaml.safe_load((REPO / "config" / "network.yaml").read_text())
-    return network["nl_bounding_box"], [h["id"] for h in network["hubs"]]
-
-
 def load_weather() -> dict:
     cache = REPO / "data" / "weather_cache.json"
     if not cache.exists():
@@ -55,12 +46,20 @@ def load_weather() -> dict:
 def main() -> int:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from dynamo import ParcelStateWriter
+    from rules import (
+        STATE_FIELDS,
+        add_breached,
+        load_parcel_dimension,
+        load_rules,
+        load_time_acceleration,
+        valid_event_condition,
+    )
 
     spark = build_spark()
     spark.sparkContext.setLogLevel("WARN")
 
-    bbox, hub_ids = load_network()
-    schema_json = (REPO / "schemas" / "parcel_event.avsc").read_text()
+    rules = load_rules(REPO)
+    accel = load_time_acceleration(REPO)
     weather = load_weather()
     weather_df = (
         spark.createDataFrame([(h, b) for h, b in weather.items()], "hub_id string, weather_bad boolean")
@@ -85,16 +84,10 @@ def main() -> int:
 
 
     payload = F.expr("substring(value, 6, length(value) - 5)")
-    decoded = raw.select(from_avro(payload, schema_json).alias("e")).select("e.*")
+    decoded = raw.select(from_avro(payload, rules.avro_schema_json).alias("e")).select("e.*")
 
 
-    is_valid = (
-        F.col("hub_id").isin(hub_ids)
-        & F.col("lat").between(bbox["lat_min"], bbox["lat_max"])
-        & F.col("lon").between(bbox["lon_min"], bbox["lon_max"])
-        & (F.col("event_ts") <= F.current_timestamp() + F.expr("INTERVAL 5 MINUTES"))
-    )
-    decoded = decoded.withColumn("_valid", is_valid)
+    decoded = decoded.withColumn("_valid", valid_event_condition(rules))
 
 
     deduped = decoded.withWatermark("event_ts", "30 minutes").dropDuplicates(["event_id"])
@@ -118,6 +111,7 @@ def main() -> int:
 
             latest = valid.groupBy("parcel_id").agg(F.max(F.struct(*STATE_FIELDS)).alias("m"))
             rows = [{"parcel_id": r["parcel_id"], **r["m"].asDict()} for r in latest.collect()]
+            add_breached(rows, load_parcel_dimension(REPO / "data" / "parcels.jsonl"), accel)
             written = state_writer.upsert_many(rows)
             print(f"# batch {batch_id}: bronze+={valid.count()} dynamo_upserts={written}")
         finally:

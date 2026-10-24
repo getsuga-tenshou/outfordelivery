@@ -1,0 +1,62 @@
+resources:
+  jobs:
+    silver:
+      name: ofd-silver
+      max_concurrent_runs: 1
+      environments:
+      - environment_key: default
+        spec:
+          environment_version: ${var.runtime_version}
+          dependencies:
+          - pyyaml
+          - fastavro
+          - boto3
+          - requests
+      tasks:
+      - task_key: events
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --step
+          - events
+          - --enable-uniform
+          - ${var.enable_uniform}
+      - task_key: parcels
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --step
+          - parcels
+          - --enable-uniform
+          - ${var.enable_uniform}
+        depends_on:
+        - task_key: events
+        run_if: ALL_SUCCESS
+      - task_key: optimize
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --step
+          - optimize
+          - --enable-uniform
+          - ${var.enable_uniform}
+        depends_on:
+        - task_key: parcels
+        run_if: ALL_SUCCESS
+      queue:
+        enabled: true

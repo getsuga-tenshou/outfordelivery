@@ -16,6 +16,11 @@ variable "aws_profile" {
   description = "AWS CLI named profile. Leave null to use the default credential chain (env vars or ~/.aws)."
 }
 
+variable "aws_account_id" {
+  type        = string
+  description = "AWS account ID Terraform is allowed to run against (aws sts get-caller-identity). Guards against applying to the wrong account."
+}
+
 variable "instance_type" {
   type        = string
   default     = "t3.small"

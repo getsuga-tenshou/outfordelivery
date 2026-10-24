@@ -12,6 +12,6 @@
     {"name": "service_level", "type": {"type": "enum", "name": "ServiceLevel", "symbols": ["SAME_DAY", "NEXT_DAY", "STANDARD"]}, "doc": "Promised service level."},
     {"name": "sla_hours", "type": "int", "doc": "Derived from service_level: SAME_DAY=6, NEXT_DAY=24, STANDARD=48."},
     {"name": "created_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the parcel was created, epoch millis UTC."},
-    {"name": "promised_by", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "created_at plus sla_hours. A parcel undelivered past this time is a breach."}
+    {"name": "promised_by", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "UTC wall-clock deadline: created_at plus sla_hours * 3600 / time_acceleration seconds. An undelivered parcel strictly past this instant is a breach."}
   ]
 }

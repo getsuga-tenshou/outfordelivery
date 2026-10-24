@@ -1,0 +1,37 @@
+resources:
+  jobs:
+    parcels_ingest:
+      name: ofd-parcels-ingest
+      max_concurrent_runs: 1
+      environments:
+      - environment_key: default
+        spec:
+          environment_version: ${var.runtime_version}
+          dependencies:
+          - pyyaml
+          - fastavro
+          - boto3
+          - requests
+      tasks:
+      - task_key: parcels_ingest
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/parcels_ingest.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --source
+          - '{{job.parameters.source}}'
+          - --batch-id
+          - '{{job.parameters.batch_id}}'
+      queue:
+        enabled: true
+      parameters:
+      - name: source
+        default: ${var.event_source}
+      - name: batch_id
+        default: ''
+      - name: ddb_table
+        default: ${var.ddb_table}

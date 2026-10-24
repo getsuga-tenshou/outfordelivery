@@ -25,3 +25,87 @@ jobs:
 
       - name: Unit tests
         run: pytest -q
+
+      - name: dbt parse (DuckDB)
+        run: dbt parse --project-dir dbt --profiles-dir dbt --target dev
+
+      # parse does not connect, so dummy values are enough
+      - name: dbt parse (Snowflake)
+        env:
+          SNOWFLAKE_ACCOUNT: dummy-account
+          SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/dummy.p8
+        run: dbt parse --project-dir dbt --profiles-dir dbt --target snowflake
+
+  databricks-bundle:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: databricks/setup-cli@v1.22.1
+        with:
+          version: 1.22.1
+
+      - name: Check bundle files against the CLI schema (offline)
+        run: |
+          pip install pyyaml jsonschema regex
+          databricks bundle schema > bundle_schema.json
+          python scripts/check_bundle_schema.py bundle_schema.json
+
+      # validate resolves the current user, so it needs a real workspace; skipped when the secrets are absent
+      - name: Validate bundle (needs workspace secrets)
+        if: ${{ env.DATABRICKS_HOST != '' && env.DATABRICKS_TOKEN != '' }}
+        run: |
+          databricks bundle validate -t free
+          databricks bundle validate -t dev
+
+  snowflake-source-modes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      # These tests mock both providers and only plan; no account credentials or state are used.
+      - name: Initialize provider schema
+        run: terraform -chdir=infra/snowflake init -backend=false -input=false -lockfile=readonly
+
+      - name: Validate native and optional Iceberg modes without credentials
+        run: terraform -chdir=infra/snowflake test -no-color
+
+  redpanda-handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Start local broker and Schema Registry
+        run: docker compose --env-file .env.example -f docker/docker-compose.yml up -d --wait redpanda
+
+      - name: Verify actual Avro export, retry and independent consumer offsets
+        env:
+          OFD_TEST_REDPANDA: "1"
+        run: pytest -q tests/test_redpanda_live.py
+
+      - name: Broker diagnostics
+        if: failure()
+        run: docker compose --env-file .env.example -f docker/docker-compose.yml logs redpanda
+
+      - name: Stop local broker
+        if: always()
+        run: docker compose --env-file .env.example -f docker/docker-compose.yml down

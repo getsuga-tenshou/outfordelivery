@@ -1,0 +1,51 @@
+resources:
+  jobs:
+    bronze_stream:
+      name: ofd-bronze-stream
+      max_concurrent_runs: 1
+      parameters:
+      - name: source
+        default: ${var.event_source}
+      - name: batch_id
+        default: ''
+      - name: ddb_table
+        default: ${var.ddb_table}
+      - name: topic
+        default: ${var.kafka_topic}
+      - name: region
+        default: ${var.aws_region}
+      environments:
+      - environment_key: default
+        spec:
+          environment_version: ${var.runtime_version}
+          dependencies:
+          - pyyaml
+          - fastavro
+          - boto3
+          - requests
+      tasks:
+      - task_key: bronze_stream
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/bronze_stream.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --source
+          - '{{job.parameters.source}}'
+          - --batch-id
+          - '{{job.parameters.batch_id}}'
+          - --secret-scope
+          - ${var.secret_scope}
+          - --ddb-table
+          - '{{job.parameters.ddb_table}}'
+          - --trigger
+          - availableNow
+          - --topic
+          - '{{job.parameters.topic}}'
+          - --region
+          - '{{job.parameters.region}}'
+      queue:
+        enabled: true

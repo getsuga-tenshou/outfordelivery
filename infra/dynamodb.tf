@@ -9,5 +9,5 @@ resource "aws_dynamodb_table" "parcel_state" {
   }
 
   stream_enabled   = true
-  stream_view_type = "NEW_IMAGE"
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 }

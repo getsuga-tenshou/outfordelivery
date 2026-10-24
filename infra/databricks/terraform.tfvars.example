@@ -1,0 +1,26 @@
+# Managed/default storage: bootstrap_catalog.sql creates the catalog for import.
+# Authenticate with the existing Databricks CLI profile or DATABRICKS_* environment.
+databricks_host = "https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
+use_external_storage = false
+enable_kafka_source = false
+enable_dynamodb = false
+enable_snowflake_link = false
+enable_dbt = false
+
+# For a SQL-bootstrapped Default Storage catalog, preserve the metadata returned
+# by catalogs.get in a git-ignored *.auto.tfvars.json file before importing:
+# default_storage_catalog = {
+#   storage_root = "s3://<Databricks-owned root returned by the API>"
+#   properties   = { collation = "UTF8_BINARY" } # use the actual returned map
+# }
+# This is Databricks-owned Default Storage, not the external-storage module.
+
+# Optional compatible external-storage workspace only. Preserve these flags for an
+# existing external deployment: review the plan before changing storage modes.
+# use_external_storage = true
+# external_location_url = "s3://outfordelivery-lake-xxxxxx/uc" # external-storage output
+# enable_kafka_source = true
+# enable_dynamodb = true
+# enable_snowflake_link = true
+# enable_dbt = true
+# Pass enabled integrations' secrets through TF_VAR_* (see variables.tf).

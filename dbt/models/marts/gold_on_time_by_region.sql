@@ -14,13 +14,13 @@ select
     count(delivered_ts) as delivered,
     sum(
         case when delivered_ts is not null
-             and (epoch(delivered_ts) - epoch(created_at)) * {{ var('time_acceleration', 120) }} <= sla_hours * 3600
+             and {{ ofd_seconds_between('created_at', 'delivered_ts') }} * {{ var('time_acceleration', 120) }} <= sla_hours * 3600
              then 1 else 0 end
     ) as on_time,
     round(
         sum(
             case when delivered_ts is not null
-                 and (epoch(delivered_ts) - epoch(created_at)) * {{ var('time_acceleration', 120) }} <= sla_hours * 3600
+                 and {{ ofd_seconds_between('created_at', 'delivered_ts') }} * {{ var('time_acceleration', 120) }} <= sla_hours * 3600
                  then 1 else 0 end
         ) * 1.0 / nullif(count(delivered_ts), 0),
         4

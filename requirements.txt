@@ -2,10 +2,14 @@ pyyaml
 requests
 numpy
 fastavro
-confluent-kafka
+confluent-kafka[avro]
 boto3
 duckdb
 dbt-core
 dbt-duckdb
 fastapi
 uvicorn[standard]
+dbt-snowflake~=1.11.0
+snowflake-connector-python~=4.8
+databricks-sdk>=0.57,<0.58
+pyarrow>=18,<20

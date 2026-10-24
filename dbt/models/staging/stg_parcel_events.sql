@@ -10,4 +10,4 @@ select
     cast(version as integer) as version,
     weather_bad,
     cast(event_date as date) as event_date
-from read_parquet('{{ var("silver_events_path") }}/**/*.parquet', hive_partitioning = true)
+from {{ ofd_silver_events() }}

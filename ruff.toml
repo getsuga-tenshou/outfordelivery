@@ -1,0 +1,5 @@
+target-version = "py310"
+
+[lint]
+# Keep the established checks stable across Ruff releases and Spark's Python 3.10 runtime.
+select = ["E4", "E7", "E9", "F"]

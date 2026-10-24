@@ -12,15 +12,15 @@ def _to_decimal(value):
 
 
 class ParcelStateWriter:
-    def __init__(self, table: str, endpoint: str, region: str):
+    def __init__(self, table: str, endpoint: str | None, region: str):
         self.table_name = table
+        local = {"aws_access_key_id": "local", "aws_secret_access_key": "local"} if endpoint else {}
         self._ddb = boto3.resource(
             "dynamodb",
             endpoint_url=endpoint,
             region_name=region,
-            aws_access_key_id="local",
-            aws_secret_access_key="local",
             config=Config(retries={"max_attempts": 3}),
+            **local,
         )
         self._client = self._ddb.meta.client
         self._table = self._ddb.Table(table)
@@ -54,6 +54,7 @@ class ParcelStateWriter:
             "lat": _to_decimal(row.get("lat")),
             "lon": _to_decimal(row.get("lon")),
             "weather_bad": row.get("weather_bad"),
+            "breached": row.get("breached"),
             "event_ts": event_ts.isoformat() if event_ts is not None else None,
         }
         item = {key: value for key, value in item.items() if value is not None}

@@ -12,6 +12,7 @@ import yaml
 
 from .envfile import load_env
 from .network import Network, load_network
+from streaming.rules import as_utc, checked_acceleration
 
 logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +121,19 @@ class WeatherProvider:
     def is_bad(self, hub_id: str) -> bool:
         obs = self._obs.get(hub_id)
         return bool(obs and obs.bad)
+
+    def snapshot(self, acceleration: float, captured_at: datetime | None = None) -> dict:
+        captured_at = as_utc(captured_at or datetime.now(timezone.utc)).isoformat()
+        observations = {}
+        for hub_id, obs in self._obs.items():
+            row = asdict(obs)
+            if row["observed_at"]:
+                row["observed_at"] = as_utc(datetime.fromisoformat(row["observed_at"])).isoformat()
+            elif row["source"] == "synthetic":
+                row["observed_at"] = captured_at
+            observations[hub_id] = row
+        return {"captured_at": captured_at, "time_acceleration": checked_acceleration(acceleration),
+                "observations": observations}
 
     def write_cache(self, path: str | Path | None = None) -> Path:
         path = Path(path) if path else REPO_ROOT / "data" / "weather_cache.json"

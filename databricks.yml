@@ -1,0 +1,103 @@
+bundle:
+  name: outfordelivery
+variables:
+  catalog:
+    description: Unity Catalog catalog created by infra/databricks.
+    default: outfordelivery
+  secret_scope:
+    description: Databricks secret scope created by infra/databricks.
+    default: outfordelivery
+  lake_bucket:
+    description: Project S3 lake bucket (terraform -chdir=infra output lake_bucket).
+    default: ''
+  notification_email:
+    description: Address that gets an email when a pipeline task fails. Override with
+      BUNDLE_VAR_notification_email.
+    default: ops@example.com
+  event_source:
+    default: volume
+    description: Completed paired volume batch, or optional compatible Kafka source.
+  ddb_table:
+    default: ''
+    description: Empty disables all AWS secret lookup, collection and DynamoDB writes
+      in Databricks.
+  run_dbt:
+    default: 'false'
+    description: Optional Databricks-side Snowflake dbt; the free route runs it on
+      the device in ticket 18.
+  enable_uniform:
+    default: 'false'
+    description: Enable Iceberg metadata only on compatible storage.
+  schedule_pause_status:
+    default: PAUSED
+    description: Keep manual until the deployment is verified.
+  runtime_version:
+    default: '5'
+    description: Serverless environment; durable Delta validation avoids the caching
+      preview.
+  kafka_topic:
+    default: parcel.events
+    description: Topic for the optional compatible Kafka source.
+  aws_region:
+    default: eu-central-1
+    description: Region for the optional DynamoDB writer.
+sync:
+  exclude:
+  - tests/**
+  - docker/**
+  - dashboard/**
+  - data/**
+  - infra/**
+  - scripts/**
+  - tickets/**
+  - .git/**
+  - .github/**
+  - venv/**
+  - .venv/**
+  - '**/__pycache__/**'
+  - .env
+  - .env.*
+  - docs/**
+  - dbt/target/**
+  - dbt/logs/**
+  - dbt/dbt_packages/**
+  - dbt/*.duckdb
+  - dbt/.user.yml
+  - '**/*.p8'
+  - '**/*.pem'
+  - '**/*.key'
+  - '**/*.tfvars'
+  - '**/*.tfvars.json'
+  - '*.log'
+include:
+- databricks/resources/*.yml
+targets:
+  dev:
+    mode: development
+    presets:
+      trigger_pause_status: PAUSED
+    variables:
+      event_source: kafka
+      ddb_table: parcel_state
+      run_dbt: 'true'
+      enable_uniform: 'true'
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      event_source: kafka
+      ddb_table: parcel_state
+      run_dbt: 'true'
+      enable_uniform: 'true'
+      schedule_pause_status: UNPAUSED
+  free:
+    mode: development
+    default: true
+    presets:
+      trigger_pause_status: PAUSED
+    variables:
+      event_source: volume
+      ddb_table: ''
+      run_dbt: 'false'
+      enable_uniform: 'false'

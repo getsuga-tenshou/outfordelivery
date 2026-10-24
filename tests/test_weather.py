@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from simulator.network import load_network
 from simulator.weather import WeatherProvider, parse_open_meteo_current
 
@@ -57,3 +59,19 @@ def test_is_bad_matches_fetched_observations():
     obs = provider.fetch()
     for hub_id, ob in obs.items():
         assert provider.is_bad(hub_id) == ob.bad
+
+
+def test_captured_weather_is_a_detached_utc_snapshot():
+    provider = WeatherProvider({"parameters": CODES, "bad_weather": BAD_CFG}, load_network(), offline=True)
+    observations = provider.fetch()
+    captured = datetime(2026, 10, 24, 8)
+    snapshot = provider.snapshot(40, captured)
+    assert snapshot["captured_at"] == captured.replace(tzinfo=timezone.utc).isoformat()
+    assert snapshot["time_acceleration"] == 40
+    for hub, observation in observations.items():
+        saved = snapshot["observations"][hub]
+        assert saved["bad"] == observation.bad
+        assert saved["source"] == "synthetic"
+        assert saved["observed_at"] == snapshot["captured_at"]
+        observation.bad = not observation.bad
+        assert saved["bad"] != observation.bad

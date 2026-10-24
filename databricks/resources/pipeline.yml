@@ -1,0 +1,186 @@
+resources:
+  jobs:
+    outfordelivery_pipeline:
+      name: ofd-pipeline
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      schedule:
+        quartz_cron_expression: 0 0 * * * ?
+        timezone_id: UTC
+        pause_status: ${var.schedule_pause_status}
+      email_notifications:
+        on_failure:
+        - ${var.notification_email}
+      parameters:
+      - name: source
+        default: ${var.event_source}
+      - name: batch_id
+        default: ''
+      - name: export_id
+        default: ''
+      - name: ddb_table
+        default: ${var.ddb_table}
+      - name: topic
+        default: ${var.kafka_topic}
+      - name: region
+        default: ${var.aws_region}
+      environments:
+      - environment_key: default
+        spec:
+          environment_version: ${var.runtime_version}
+          dependencies:
+          - pyyaml
+          - fastavro
+          - boto3
+          - requests
+      - environment_key: dbt
+        spec:
+          environment_version: ${var.runtime_version}
+          dependencies:
+          - dbt-snowflake~=1.11.0
+      tasks:
+      - task_key: parcels_ingest
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/parcels_ingest.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --source
+          - '{{job.parameters.source}}'
+          - --batch-id
+          - '{{job.parameters.batch_id}}'
+      - task_key: weather_ingest
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/weather_ingest.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --source
+          - '{{job.parameters.source}}'
+          - --batch-id
+          - '{{job.parameters.batch_id}}'
+        depends_on:
+        - task_key: parcels_ingest
+        run_if: ALL_SUCCESS
+      - task_key: bronze_stream
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/bronze_stream.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --source
+          - '{{job.parameters.source}}'
+          - --batch-id
+          - '{{job.parameters.batch_id}}'
+          - --secret-scope
+          - ${var.secret_scope}
+          - --ddb-table
+          - '{{job.parameters.ddb_table}}'
+          - --trigger
+          - availableNow
+          - --topic
+          - '{{job.parameters.topic}}'
+          - --region
+          - '{{job.parameters.region}}'
+        depends_on:
+        - task_key: weather_ingest
+        run_if: ALL_SUCCESS
+      - task_key: silver_events
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --step
+          - events
+          - --enable-uniform
+          - ${var.enable_uniform}
+        depends_on:
+        - task_key: bronze_stream
+        run_if: ALL_SUCCESS
+      - task_key: silver_parcels
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --step
+          - parcels
+          - --enable-uniform
+          - ${var.enable_uniform}
+        depends_on:
+        - task_key: silver_events
+        run_if: ALL_SUCCESS
+      - task_key: optimize
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --step
+          - optimize
+          - --enable-uniform
+          - ${var.enable_uniform}
+        depends_on:
+        - task_key: silver_parcels
+        run_if: ALL_SUCCESS
+      - task_key: export_silver
+        environment_key: default
+        spark_python_task:
+          python_file: ../jobs/export_silver.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --catalog
+          - ${var.catalog}
+          - --source
+          - '{{job.parameters.source}}'
+          - --batch-id
+          - '{{job.parameters.batch_id}}'
+          - --export-id
+          - '{{job.parameters.export_id}}'
+          - --run-id
+          - '{{job.run_id}}'
+        depends_on:
+        - task_key: optimize
+        run_if: ALL_SUCCESS
+      - task_key: dbt_enabled
+        depends_on:
+        - task_key: export_silver
+        run_if: ALL_SUCCESS
+        condition_task:
+          op: EQUAL_TO
+          left: ${var.run_dbt}
+          right: 'true'
+      - task_key: dbt_build
+        environment_key: dbt
+        spark_python_task:
+          python_file: ../jobs/dbt_build.py
+          parameters:
+          - --repo
+          - ${workspace.file_path}
+          - --secret-scope
+          - ${var.secret_scope}
+        depends_on:
+        - task_key: dbt_enabled
+          outcome: 'true'
+        run_if: ALL_SUCCESS

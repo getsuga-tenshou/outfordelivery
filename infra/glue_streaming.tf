@@ -82,6 +82,40 @@ resource "aws_s3_object" "glue_script" {
   etag   = filemd5("${path.module}/../streaming/glue_streaming_job.py")
 }
 
+data "archive_file" "glue_libs" {
+  type        = "zip"
+  output_path = "${path.module}/glue_libs.zip"
+  source {
+    content  = file("${path.module}/../streaming/rules.py")
+    filename = "rules.py"
+  }
+  source {
+    content  = file("${path.module}/../streaming/dynamo.py")
+    filename = "dynamo.py"
+  }
+}
+
+resource "aws_s3_object" "glue_libs" {
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "scripts/glue_libs.zip"
+  source = data.archive_file.glue_libs.output_path
+  etag   = data.archive_file.glue_libs.output_md5
+}
+
+resource "aws_s3_object" "glue_network" {
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "scripts/network.yaml"
+  source = "${path.module}/../config/network.yaml"
+  etag   = filemd5("${path.module}/../config/network.yaml")
+}
+
+resource "aws_s3_object" "glue_schema" {
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "scripts/parcel_event.avsc"
+  source = "${path.module}/../schemas/parcel_event.avsc"
+  etag   = filemd5("${path.module}/../schemas/parcel_event.avsc")
+}
+
 resource "aws_glue_job" "streaming" {
   name              = "${local.name}-streaming-${local.suffix}"
   role_arn          = aws_iam_role.glue.arn
@@ -99,6 +133,8 @@ resource "aws_glue_job" "streaming" {
   default_arguments = {
     "--job-language"                     = "python"
     "--datalake-formats"                 = "delta"
+    "--extra-py-files"                   = "s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_libs.key}"
+    "--extra-files"                      = "s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_network.key},s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_schema.key}"
     "--OFD_LAKE"                         = "s3://${aws_s3_bucket.lake.bucket}"
     "--OFD_KAFKA"                        = "${aws_instance.kafka.private_ip}:29092"
     "--OFD_TOPIC"                        = "parcel.events"

@@ -60,12 +60,12 @@ def test_coordinates_within_netherlands():
         assert box["lon_min"] <= event["lon"] <= box["lon_max"]
 
 
-def test_promised_by_equals_created_plus_sla():
+def test_promised_by_is_a_compressed_wall_clock_deadline():
     engine = make_engine()
     now = datetime.now(timezone.utc)
     for _ in range(50):
         parcel = engine.build_parcel(now)
-        assert parcel.promised_by == now + timedelta(hours=parcel.sla_hours)
+        assert parcel.promised_by == now + timedelta(seconds=parcel.sla_hours * 3600 / engine.time_acceleration)
 
 
 def test_failure_and_return_rates_are_plausible():
@@ -77,3 +77,27 @@ def test_failure_and_return_rates_are_plausible():
     assert 0.02 <= failed / n <= 0.09
 
     assert returned / n <= 0.03
+
+
+def test_fixed_reference_uses_acceleration_and_minimum_steps():
+    engine = make_engine()
+    engine.time_acceleration = 40
+    engine.min_step = 2
+    engine.plan_events = lambda parcel: [(0, sm.CREATED), (0, sm.LABEL_PRINTED), (1, sm.DELIVERED)]
+    reference = datetime(2026, 10, 24, 8)  # naive boundary input is explicitly UTC
+    parcels = []
+    events = engine.generate(1, reference, on_parcel=parcels.append)
+    assert events[-1]["event_ts"] == reference.replace(tzinfo=timezone.utc)
+    assert (events[1]["event_ts"] - events[0]["event_ts"]).total_seconds() == 2
+    assert (events[-1]["event_ts"] - events[0]["event_ts"]).total_seconds() == 90
+    assert parcels[0].created_at == events[0]["event_ts"]
+    assert (parcels[0].promised_by - parcels[0].created_at).total_seconds() * 40 == parcels[0].sla_hours * 3600
+
+
+def test_replay_clock_is_repeatable_at_a_fixed_reference():
+    reference = datetime(2026, 10, 24, 8, tzinfo=timezone.utc)
+    first = make_engine().generate(10, reference)
+    second = make_engine().generate(10, reference)
+    # Event IDs remain new identities; seeded schedule, coordinates and timestamps are reproducible.
+    assert [{k: v for k, v in event.items() if k != "event_id"} for event in first] == [
+        {k: v for k, v in event.items() if k != "event_id"} for event in second]

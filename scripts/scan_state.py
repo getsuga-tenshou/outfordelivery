@@ -7,17 +7,17 @@ from collections import Counter
 
 import boto3
 
-ENDPOINT = os.environ.get("OFD_DDB_ENDPOINT", "http://localhost:8000")
+ENDPOINT = os.environ.get("OFD_DDB_ENDPOINT", "http://localhost:8000") or None  # empty = real AWS DynamoDB
 TABLE = os.environ.get("OFD_DDB_TABLE", "parcel_state")
 
 
 def main() -> int:
+    local = {"aws_access_key_id": "local", "aws_secret_access_key": "local"} if ENDPOINT else {}
     ddb = boto3.resource(
         "dynamodb",
         endpoint_url=ENDPOINT,
         region_name=os.environ.get("AWS_REGION", "eu-west-1"),
-        aws_access_key_id="local",
-        aws_secret_access_key="local",
+        **local,
     )
     table = ddb.Table(TABLE)
 

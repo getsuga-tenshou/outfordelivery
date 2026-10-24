@@ -24,3 +24,15 @@ outfordelivery:
       schema: "{{ env_var('OFD_GLUE_DB', 'outfordelivery') }}"
       work_group: "{{ env_var('OFD_ATHENA_WORKGROUP', 'primary') }}"
       threads: 2
+
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'OFD_DBT') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE', '') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'OFD_TRANSFORMER') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'OFD_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'OUTFORDELIVERY') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'STAGING') }}"
+      threads: 4

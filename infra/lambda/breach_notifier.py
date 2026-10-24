@@ -10,6 +10,10 @@ def _publish(subject: str, message: str) -> None:
     sns.publish(TopicArn=TOPIC, Subject=subject[:100], Message=message)
 
 
+def _breached(image: dict) -> bool:
+    return image.get("breached", {}).get("BOOL", False)
+
+
 def handler(event, context):
     if event.get("source") == "aws.events":
         print("scheduled maintenance tick")
@@ -18,9 +22,11 @@ def handler(event, context):
     alerts = 0
     for record in event.get("Records", []):
         image = record.get("dynamodb", {}).get("NewImage", {})
+        old_image = record.get("dynamodb", {}).get("OldImage", {})
         status = image.get("status", {}).get("S")
-        breached = image.get("breached", {}).get("BOOL", False)
-        if breached or status == "RETURNED":
+        breached = _breached(image)
+        # alert once, when breached flips from false/absent to true (needs stream view NEW_AND_OLD_IMAGES)
+        if (breached and not _breached(old_image)) or status == "RETURNED":
             parcel_id = image.get("parcel_id", {}).get("S", "unknown")
             _publish(
                 f"outfordelivery alert: {parcel_id}",

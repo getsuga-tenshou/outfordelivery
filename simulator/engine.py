@@ -12,6 +12,7 @@ import numpy as np
 
 from . import statemachine as sm
 from .network import Hub, Network, jitter, nearest_hub, pick_destination
+from streaming.rules import as_utc, checked_acceleration
 
 
 @dataclass
@@ -63,13 +64,14 @@ class SimulationEngine:
         self.reschedule_extra = sim_config["reschedule_extra_hours"]
         self.dwell_multiplier_bad = float(sim_config["weather_effect"]["bad_weather_dwell_multiplier"])
         self.arrival_rate = float(sim_config["arrivals"]["new_parcels_per_minute"])
-        self.time_acceleration = float(sim_config["time_acceleration"])
+        self.time_acceleration = checked_acceleration(sim_config["time_acceleration"])
         self.min_step = float(sim_config["min_step_wall_seconds"])
 
         self.weather_is_bad = weather_is_bad or (lambda hub_id: False)
 
 
     def build_parcel(self, created_at: datetime) -> Parcel:
+        created_at = as_utc(created_at)
         rng, net = self.rng, self.net
         service_level = _weighted_choice(rng, self.service_weights)
         sla_hours = self.sla_hours[service_level]
@@ -86,7 +88,7 @@ class SimulationEngine:
             service_level=service_level,
             sla_hours=sla_hours,
             created_at=created_at,
-            promised_by=created_at + timedelta(hours=sla_hours),
+            promised_by=created_at + timedelta(seconds=sla_hours * 3600 / self.time_acceleration),
         )
 
     def plan_events(self, parcel: Parcel) -> list[tuple[float, str]]:
@@ -143,14 +145,29 @@ class SimulationEngine:
         }
 
 
-    def generate(self, n_parcels: int) -> list[dict]:
+    def wall_offset(self, offset_hours: float, version: int) -> float:
+        return max(offset_hours * 3600 / self.time_acceleration, (version - 1) * self.min_step)
+
+    def generate(self, n_parcels: int, reference_time: datetime | None = None, on_parcel=None) -> list[dict]:
+        if n_parcels < 1:
+            raise ValueError("n_parcels must be positive")
         events: list[dict] = []
-        base = datetime.now(timezone.utc)
+        parcels: list[Parcel] = []
+        base = as_utc(reference_time or datetime.now(timezone.utc))
         for _ in range(n_parcels):
             parcel = self.build_parcel(base)
+            parcels.append(parcel)
             for version, (offset_hours, event_type) in enumerate(self.plan_events(parcel), start=1):
-                event_ts = parcel.created_at + timedelta(hours=offset_hours)
+                event_ts = parcel.created_at + timedelta(seconds=self.wall_offset(offset_hours, version))
                 events.append(self.to_event(parcel, version, event_type, event_ts))
+        shift = max(event["event_ts"] for event in events) - base
+        for parcel in parcels:
+            parcel.created_at -= shift
+            parcel.promised_by -= shift
+            if on_parcel is not None:
+                on_parcel(parcel)
+        for event in events:
+            event["event_ts"] -= shift
         return events
 
 
@@ -170,11 +187,13 @@ class SimulationEngine:
             while (max_parcels is None or created < max_parcels) and next_arrival <= now:
                 created += 1
                 parcel = self.build_parcel(datetime.now(timezone.utc))
+                # The configured seed may repeat across live runs; their parcel keys must not.
+                parcel.parcel_id = f"P{uuid.uuid4().hex}"
                 if on_parcel is not None:
                     on_parcel(parcel)
                 base = next_arrival
                 for version, (offset_hours, event_type) in enumerate(self.plan_events(parcel), start=1):
-                    due = base + max(offset_hours * 3600.0 / self.time_acceleration, (version - 1) * self.min_step)
+                    due = base + self.wall_offset(offset_hours, version)
                     heapq.heappush(heap, (due, next(tie), parcel, version, event_type))
                 next_arrival += float(self.np_rng.exponential(60.0 / self.arrival_rate))
 

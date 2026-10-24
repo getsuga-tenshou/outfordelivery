@@ -56,6 +56,11 @@ resource "aws_instance" "kafka" {
   key_name                    = var.ec2_key_name
   associate_public_ip_address = true
 
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
+
   user_data = <<-EOT
     #!/bin/bash
     set -euxo pipefail

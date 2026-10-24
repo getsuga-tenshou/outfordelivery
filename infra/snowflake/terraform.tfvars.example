@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+# Account identifier myorg-myaccount: Snowsight > account menu > Copy account identifier.
+snowflake_organization_name = "myorg"
+snowflake_account_name      = "myaccount"
+snowflake_admin_user        = "ADMIN_USER"
+# Prefer the SNOWFLAKE_PASSWORD env var (or TF_VAR_snowflake_admin_password) over writing it here.
+# snowflake_admin_password = "..."
+
+# Optional (defaults: ACCOUNTADMIN, 10 credits per month).
+# snowflake_admin_role = "ACCOUNTADMIN"
+# monthly_credit_quota = 10
+
+# Public keys, one line each, without the BEGIN/END header and footer.
+# Generate RSA keys outside the repository and supply only their public portions here.
+dbt_public_key       = "MIIBIjANBgkqh..."
+dashboard_public_key = "MIIBIjANBgkqh..."
+loader_public_key    = "MIIBIjANBgkqh..."
+source_mode          = "native"
+
+# Silver in Databricks (ticket 09). From: terraform -chdir=infra/databricks output databricks_host / snowflake_oauth_client_id
+# For optional compatible external storage only: set source_mode = "iceberg" and uncomment.
+# databricks_host    = "https://dbc-xxxxxxxx-xxxx.cloud.databricks.com"
+# uc_oauth_client_id = "00000000-0000-0000-0000-000000000000"
+# Prefer TF_VAR_uc_oauth_client_secret=$(terraform -chdir=infra/databricks output -raw snowflake_oauth_client_secret)
+# uc_oauth_client_secret = "..."
+# uc_catalog_name        = "outfordelivery"
