@@ -111,7 +111,8 @@ resource "snowflake_grant_privileges_to_account_role" "transformer_lake_schema" 
 }
 
 resource "snowflake_grant_privileges_to_account_role" "transformer_lake_select" {
-  for_each          = toset(["TABLES", "ICEBERG TABLES"])
+  # Native sources have explicit grants; future grants would also expose loader internals.
+  for_each          = var.source_mode == "iceberg" ? toset(["TABLES", "ICEBERG TABLES"]) : toset([])
   account_role_name = snowflake_account_role.transformer.name
   privileges        = ["SELECT"]
   on_schema_object {

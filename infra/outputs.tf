@@ -28,6 +28,16 @@ output "glue_job_name" {
   description = "Glue streaming job name."
 }
 
+output "parcel_dimension_uri" {
+  value       = local.parcel_dimension_uri
+  description = "Upload data/parcels.jsonl here before or while producing; Glue reads it for breach flags."
+}
+
+output "weather_cache_uri" {
+  value       = local.weather_cache_uri
+  description = "Upload the producer's data/weather_cache.json here; Glue reloads it each micro-batch."
+}
+
 output "glue_database" {
   value       = aws_glue_catalog_database.ofd.name
   description = "Glue Data Catalog database."

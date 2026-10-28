@@ -17,5 +17,6 @@ alert_email  = "you@example.com"
 
 # Optional: an existing EC2 key pair name for SSH into the Kafka node.
 # ec2_key_name = "my-ec2-keypair"
+# ec2_instance_profile = "my-ssm-instance-profile"  # e.g. a role with AmazonSSMManagedInstanceCore for Session Manager
 
 enable_redshift = false

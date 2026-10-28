@@ -11,9 +11,10 @@ variables:
     description: Project S3 lake bucket (terraform -chdir=infra output lake_bucket).
     default: ''
   notification_email:
-    description: Address that gets an email when a pipeline task fails. Override with
-      BUNDLE_VAR_notification_email.
-    default: ops@example.com
+    description: Address notified when the pipeline run fails. Defaults to the deploying
+      user's address; override with BUNDLE_VAR_notification_email or a target's local
+      variable-overrides.json.
+    default: ${workspace.current_user.userName}
   event_source:
     default: volume
     description: Completed paired volume batch, or optional compatible Kafka source.

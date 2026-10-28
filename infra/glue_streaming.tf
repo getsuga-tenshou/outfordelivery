@@ -109,11 +109,24 @@ resource "aws_s3_object" "glue_network" {
   etag   = filemd5("${path.module}/../config/network.yaml")
 }
 
+resource "aws_s3_object" "glue_simulation" {
+  bucket = aws_s3_bucket.artifacts.id
+  key    = "scripts/simulation.yaml"
+  source = "${path.module}/../config/simulation.yaml"
+  etag   = filemd5("${path.module}/../config/simulation.yaml")
+}
+
 resource "aws_s3_object" "glue_schema" {
   bucket = aws_s3_bucket.artifacts.id
   key    = "scripts/parcel_event.avsc"
   source = "${path.module}/../schemas/parcel_event.avsc"
   etag   = filemd5("${path.module}/../schemas/parcel_event.avsc")
+}
+
+locals {
+  # The producer's data/parcels.jsonl, uploaded from the device; the job reloads it every micro-batch.
+  parcel_dimension_uri = "s3://${aws_s3_bucket.lake.bucket}/dimensions/parcels.jsonl"
+  weather_cache_uri    = "s3://${aws_s3_bucket.lake.bucket}/dimensions/weather_cache.json"
 }
 
 resource "aws_glue_job" "streaming" {
@@ -134,12 +147,14 @@ resource "aws_glue_job" "streaming" {
     "--job-language"                     = "python"
     "--datalake-formats"                 = "delta"
     "--extra-py-files"                   = "s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_libs.key}"
-    "--extra-files"                      = "s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_network.key},s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_schema.key}"
+    "--extra-files"                      = "s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_network.key},s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_simulation.key},s3://${aws_s3_bucket.artifacts.bucket}/${aws_s3_object.glue_schema.key}"
     "--OFD_LAKE"                         = "s3://${aws_s3_bucket.lake.bucket}"
     "--OFD_KAFKA"                        = "${aws_instance.kafka.private_ip}:29092"
     "--OFD_TOPIC"                        = "parcel.events"
     "--OFD_DDB_TABLE"                    = aws_dynamodb_table.parcel_state.name
     "--OFD_REGION"                       = var.region
+    "--OFD_PARCELS"                      = local.parcel_dimension_uri
+    "--OFD_WEATHER"                      = local.weather_cache_uri
     "--enable-metrics"                   = "true"
     "--enable-continuous-cloudwatch-log" = "true"
   }

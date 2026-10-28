@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -19,6 +20,29 @@ from streaming.silver_exports import cleanup_export, download_export, read_expor
 from streaming.snowflake_load import connect_loader, load_export
 
 REPO = Path(__file__).resolve().parents[1]
+
+
+@contextmanager
+def required_files(kind: str, recovery: str):
+    """Add local recovery context without relabeling connector or validation failures."""
+    try:
+        yield
+    except FileNotFoundError as exc:
+        path = str(exc.filename) if exc.filename is not None else "(path unavailable)"
+        raise ValueError(f"Missing {kind} file: {path}. {recovery}; local files and run state retained.") from exc
+
+
+def read_input_manifest(path: Path, acceleration: float) -> tuple[dict, str]:
+    if path.name != "manifest.json":
+        raise ValueError("--manifest must name the existing completed input manifest")
+    with required_files("input batch", "Restore the original completed input batch at its retained path and retry"):
+        batch = read_batch(path.parent, acceleration)
+        return batch, digest(path.read_bytes())
+
+
+def read_local_export(path: Path, acceleration: float) -> dict:
+    with required_files("local export", "Restore the original files; for an unfinished download, use resume with the same export ID"):
+        return read_export(path, acceleration)
 
 
 def coordinate(root: Path, export_id: str, acceleration: float, *, manifest_path: Path | None = None,
@@ -43,10 +67,7 @@ def coordinate(root: Path, export_id: str, acceleration: float, *, manifest_path
         try:
             if manifest_path is not None:
                 manifest_path = Path(manifest_path).resolve()
-                if manifest_path.name != "manifest.json":
-                    raise ValueError("--manifest must name the existing completed input manifest")
-                batch = read_batch(manifest_path.parent, acceleration)
-                identity = digest(manifest_path.read_bytes())
+                batch, identity = read_input_manifest(manifest_path, acceleration)
                 if state.get("input_hash", identity) != identity or state.get("catalog", catalog) != catalog:
                     raise ValueError("Export ID already coordinates another input or catalog")
                 save(input_manifest=str(manifest_path), input_hash=identity, catalog=catalog,
@@ -58,9 +79,10 @@ def coordinate(root: Path, export_id: str, acceleration: float, *, manifest_path
                     if job_id is None:
                         raise ValueError("--job-id is required to start processing")
                     batch_manifest = Path(state["input_manifest"])
-                    if digest(batch_manifest.read_bytes()) != state["input_hash"]:
-                        raise ValueError("Retained input manifest changed")
-                    upload_batch(client.files, batch_manifest, catalog, acceleration)
+                    with required_files("input batch", "Restore the original input at its retained path and resume"):
+                        if digest(batch_manifest.read_bytes()) != state["input_hash"]:
+                            raise ValueError("Retained input manifest changed")
+                        upload_batch(client.files, batch_manifest, catalog, acceleration)
                     save(stage="input_uploaded", job_id=job_id)
                     token = digest(f"{catalog}/{job_id}/{export_id}/{state['input_hash']}".encode())
                     request = client.jobs.run_now(job_id=job_id, idempotency_token=token,
@@ -75,7 +97,7 @@ def coordinate(root: Path, export_id: str, acceleration: float, *, manifest_path
                         raise RuntimeError(f"Processing run {state['run_id']} did not succeed; inspect/repair that run")
                     save(stage="processed")
                 local = download_export(client.files, catalog, export_id, root, acceleration)
-            export = read_export(local, acceleration)
+            export = read_local_export(local, acceleration)
             if state.get("input_hash"):
                 selected = {row["batch_id"]: row["manifest_hash"] for row in export["upstream"]["batches"]}
                 if selected.get(state["batch_id"]) != state["input_hash"]:
@@ -95,7 +117,7 @@ def coordinate(root: Path, export_id: str, acceleration: float, *, manifest_path
                 if dbt_runner([*command, "--target", "snowflake", "--vars", variables]):
                     save(stage="loaded", dbt_status="failed", dbt_failed_command=command)
                     raise RuntimeError("Snowflake data loaded successfully; dbt failed. Resume this export to rebuild marts.")
-            save(stage="complete", dbt_status="success", last_error=None)
+            save(stage="complete", dbt_status="success", dbt_failed_command=None, last_error=None)
             return local
         except Exception as exc:
             # Preserve the last successful stage. Never record raw connector errors, which may contain account details.
@@ -136,9 +158,13 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("sync requires --manifest for an existing completed input batch")
         if args.action != "sync" and args.manifest:
             raise ValueError("Only sync accepts --manifest; retries use the retained run or local export")
+        # Report invalid local input before SDK authentication can obscure the actual problem.
+        # coordinate/upload_batch still validate again at the point of use.
+        if args.manifest:
+            read_input_manifest(args.manifest.resolve(), acceleration)
         local = args.exports_dir / args.export_id
         if args.action == "load":
-            read_export(local, acceleration)
+            read_local_export(local, acceleration)
         client = None
         if not (local / "COMPLETE").exists():
             from databricks.sdk import WorkspaceClient
@@ -148,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
                             client=client, catalog=args.catalog, job_id=args.job_id)
         print(f"Snapshot and dbt complete; retained export: {result}")
         return 0
+    except FileNotFoundError as exc:
+        path = str(exc.filename) if exc.filename is not None else "(path unavailable)"
+        print(f"Missing required local file: {path}. Restore the file and retry; local files and run state retained.",
+              file=sys.stderr)
+        return 2
     except (ValueError, OSError, KeyError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
         return 2

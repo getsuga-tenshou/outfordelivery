@@ -3,7 +3,18 @@ from datetime import datetime, timedelta, timezone
 
 from dashboard.app import _parcel_view, _sla_state
 from streaming.dynamo import ParcelStateWriter
-from streaming.rules import add_breached, is_breached, load_parcel_dimension, load_time_acceleration
+import io
+
+import pytest
+from botocore.exceptions import ClientError
+
+from streaming.rules import (
+    add_breached,
+    is_breached,
+    load_parcel_dimension,
+    load_s3_parcel_dimension,
+    load_time_acceleration,
+)
 
 CREATED = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
 ACCEL = 120.0
@@ -66,6 +77,37 @@ def test_add_breached_marks_each_row(tmp_path):
 
 def test_missing_dimension_file_gives_an_empty_dimension(tmp_path):
     assert load_parcel_dimension(tmp_path / "nope.jsonl") == {}
+
+
+class _S3:
+    def __init__(self, objects, error=None):
+        self.objects, self.error, self.requested = objects, error, []
+
+    def get_object(self, Bucket, Key):
+        self.requested.append((Bucket, Key))
+        if self.error:
+            raise ClientError({"Error": {"Code": self.error}}, "GetObject")
+        return {"Body": io.BytesIO(self.objects[(Bucket, Key)])}
+
+
+def test_s3_dimension_matches_the_file_loader(tmp_path):
+    lines = [
+        {"parcel_id": "P1", "created_at": CREATED.isoformat(), "sla_hours": 6},
+        {"parcel_id": "P1", "created_at": (CREATED + timedelta(hours=1)).isoformat(), "sla_hours": 6},
+        {"parcel_id": "P2", "created_at": CREATED.isoformat(), "sla_hours": 48},
+    ]
+    text = "".join(json.dumps(line) + "\n" for line in lines)
+    (tmp_path / "parcels.jsonl").write_text(text)
+    s3 = _S3({("lake", "dimensions/parcels.jsonl"): text.encode()})
+    dimension = load_s3_parcel_dimension(s3, "s3://lake/dimensions/parcels.jsonl")
+    assert s3.requested == [("lake", "dimensions/parcels.jsonl")]
+    assert dimension == load_parcel_dimension(tmp_path / "parcels.jsonl")
+
+
+def test_s3_dimension_missing_object_is_empty_and_other_errors_raise():
+    assert load_s3_parcel_dimension(_S3({}, error="NoSuchKey"), "s3://lake/dimensions/parcels.jsonl") == {}
+    with pytest.raises(ClientError):
+        load_s3_parcel_dimension(_S3({}, error="AccessDenied"), "s3://lake/dimensions/parcels.jsonl")
 
 
 def test_time_acceleration_comes_from_the_simulation_config():

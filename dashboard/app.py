@@ -6,9 +6,11 @@ import threading
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
 
 import boto3
 import duckdb
+from dotenv import dotenv_values
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -112,6 +114,29 @@ def _parcel_view(item: dict, dim: dict, accel: float, now: datetime) -> dict:
 
 
 app = FastAPI(title="outfordelivery dashboard")
+
+
+@app.get("/api/map/style")
+def map_style() -> JSONResponse:
+    key = os.environ.get("CARTO_MAP_API_KEY")
+    if key is None:
+        key = dotenv_values(REPO / ".env", interpolate=False).get("CARTO_MAP_API_KEY")
+    key = (key or "").strip()
+    style = {
+        "version": 8,
+        "sources": {},
+        "layers": [{"id": "background", "type": "background", "paint": {"background-color": "#eaeff5"}}],
+    }
+    if key:
+        style["sources"]["base"] = {
+            "type": "raster",
+            "tileSize": 256,
+            "tiles": ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png?" + urlencode({"key": key})],
+            "attribution": '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, '
+                           '© <a href="https://carto.com/attributions">CARTO</a>',
+        }
+        style["layers"].append({"id": "base", "type": "raster", "source": "base"})
+    return JSONResponse(style, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/live/summary")

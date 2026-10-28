@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import sys
@@ -158,6 +159,13 @@ def run_produce(args: argparse.Namespace) -> int:
     return 0 if producer.failed == 0 and still_queued == 0 else 1
 
 
+def _duration_seconds(value: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise argparse.ArgumentTypeError("duration must be a finite non-negative number")
+    return seconds
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="outfordelivery event simulator")
     parser.add_argument("--produce", action="store_true", help="stream events to Kafka (default is a dry-run print)")
@@ -171,8 +179,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="produce: retain local per-event parcel and weather context for the exporter")
     parser.add_argument("--verify-batch", help="validate an existing completed batch without generating or uploading data")
     parser.add_argument("--count", type=int, default=10, help="dry run: number of parcels to generate")
-    parser.add_argument("--max-parcels", type=int, default=None, help="produce: stop after creating this many parcels")
-    parser.add_argument("--duration", type=float, default=None, help="produce: stop after this many seconds")
+    parser.add_argument("--max-parcels", type=int, default=None,
+                        help="produce: stop creating parcels at this count, then drain queued events")
+    parser.add_argument("--duration", type=_duration_seconds, default=None,
+                        help="produce: stop creating parcels after this many seconds, then drain queued events")
     parser.add_argument("--seed", type=int, default=None, help="override the config seed")
     parser.add_argument("--topic", default="parcel.events", help="Kafka topic to produce to")
     parser.add_argument("--bootstrap", default=None, help="Kafka bootstrap servers (default env KAFKA_BOOTSTRAP)")

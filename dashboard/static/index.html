@@ -99,6 +99,7 @@
 
     <h2>Across the Netherlands</h2>
     <div id="map"></div>
+    <p id="map-notice" role="status" hidden>Basemap unavailable. Set CARTO_MAP_API_KEY to show map tiles.</p>
     <div class="legend">
       <span><span class="dot" style="background:#2e9e5b"></span>on time</span>
       <span><span class="dot" style="background:#e0a526"></span>at risk</span>
@@ -177,12 +178,10 @@
     function initMap() {
       map = new maplibregl.Map({
         container: "map", center: [5.4, 52.2], zoom: 6.4,
-        style: { version: 8,
-          sources: { base: { type: "raster", tileSize: 256,
-            tiles: ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"], attribution: "© OpenStreetMap, © CARTO" } },
-          layers: [{ id: "base", type: "raster", source: "base" }] }
+        style: "/api/map/style"
       });
       map.on("load", () => {
+        document.getElementById("map-notice").hidden = !!map.getSource("base");
         map.resize();
         map.addSource("parcels", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         map.addLayer({ id: "parcels", type: "circle", source: "parcels",

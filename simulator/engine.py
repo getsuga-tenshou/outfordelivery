@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import heapq
 import itertools
+import math
 import random
 import time as wallclock
 import uuid
@@ -172,7 +173,11 @@ class SimulationEngine:
 
 
     def run(self, emit, on_parcel=None, max_parcels: int | None = None, max_runtime_s: float | None = None) -> int:
+        """Admit parcels until either limit, then emit all their queued lifecycle events."""
+        if max_runtime_s is not None and (not math.isfinite(max_runtime_s) or max_runtime_s < 0):
+            raise ValueError("max_runtime_s must be a finite non-negative number")
         start = wallclock.monotonic()
+        deadline = None if max_runtime_s is None else start + max_runtime_s
         heap: list[tuple[float, int, Parcel, int, str]] = []
         tie = itertools.count()
         created = 0
@@ -181,10 +186,11 @@ class SimulationEngine:
 
         while True:
             now = wallclock.monotonic()
-            if max_runtime_s is not None and now - start >= max_runtime_s and not heap:
-                break
-
-            while (max_parcels is None or created < max_parcels) and next_arrival <= now:
+            while (
+                (max_parcels is None or created < max_parcels)
+                and next_arrival <= now
+                and (deadline is None or now < deadline)
+            ):
                 created += 1
                 parcel = self.build_parcel(datetime.now(timezone.utc))
                 # The configured seed may repeat across live runs; their parcel keys must not.
@@ -196,11 +202,13 @@ class SimulationEngine:
                     due = base + self.wall_offset(offset_hours, version)
                     heapq.heappush(heap, (due, next(tie), parcel, version, event_type))
                 next_arrival += float(self.np_rng.exponential(60.0 / self.arrival_rate))
+                now = wallclock.monotonic()
 
             if not heap:
-                if max_parcels is not None and created >= max_parcels:
+                if (max_parcels is not None and created >= max_parcels) or (deadline is not None and now >= deadline):
                     break
-                wallclock.sleep(min(0.05, max(0.0, next_arrival - wallclock.monotonic())))
+                wake = next_arrival if deadline is None else min(next_arrival, deadline)
+                wallclock.sleep(min(0.05, max(0.0, wake - wallclock.monotonic())))
                 continue
 
             due = heap[0][0]

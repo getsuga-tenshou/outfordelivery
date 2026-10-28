@@ -176,7 +176,7 @@ resource "snowflake_grant_privileges_to_account_role" "loader_format" {
   }
 }
 
-# Explicit SELECT complements existing future grants, including creation in this same apply.
+# Native dbt reads published sources and freshness audit, excluding loader internals.
 resource "snowflake_grant_privileges_to_account_role" "transformer_native" {
   for_each          = var.source_mode == "native" ? toset(["SILVER_PARCEL_EVENTS", "SILVER_PARCELS", "LOAD_AUDIT"]) : toset([])
   account_role_name = snowflake_account_role.transformer.name

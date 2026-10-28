@@ -33,6 +33,12 @@ variable "ec2_key_name" {
   description = "Name of an existing EC2 key pair for SSH to the Kafka node. Null attaches no key."
 }
 
+variable "ec2_instance_profile" {
+  type        = string
+  default     = null
+  description = "Name of an existing IAM instance profile for the Kafka node, e.g. one with AmazonSSMManagedInstanceCore for Session Manager access. Null attaches none."
+}
+
 variable "allowed_cidr" {
   type        = string
   description = "Your public IP in CIDR form, e.g. 203.0.113.4/32 (see https://checkip.amazonaws.com), for SSH and Kafka access. Do not use 0.0.0.0/0."

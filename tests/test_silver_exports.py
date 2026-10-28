@@ -359,7 +359,8 @@ def test_second_warehouse_session_cannot_publish_while_first_holds_transaction_l
     assert warehouse.published() == before
 
 
-def test_dbt_failure_preserves_successful_load_and_resume_rebuilds_without_reloading(snapshot, monkeypatch):
+@pytest.mark.parametrize("failed_command", [["source", "freshness"], ["build"]])
+def test_dbt_failure_preserves_successful_load_and_resume_rebuilds_without_reloading(snapshot, monkeypatch, failed_command):
     from scripts import sync_snowflake
 
     warehouse = LocalWarehouse(snapshot)
@@ -368,7 +369,7 @@ def test_dbt_failure_preserves_successful_load_and_resume_rebuilds_without_reloa
 
     def failed_dbt(args):
         calls.append(args)
-        return 1 if args[0] == "build" else 0
+        return 1 if args[:len(failed_command)] == failed_command else 0
 
     with pytest.raises(RuntimeError, match="loaded successfully"):
         sync_snowflake.coordinate(snapshot.parent, snapshot.name, 37,
@@ -377,11 +378,149 @@ def test_dbt_failure_preserves_successful_load_and_resume_rebuilds_without_reloa
     state_file = snapshot.parent / ".runs" / "snapshot.json"
     state = json.loads(state_file.read_bytes())
     assert state["stage"] == "loaded" and state["dbt_status"] == "failed"
+    assert state["dbt_failed_command"] == failed_command
     assert all(json.loads(args[-1])["time_acceleration"] == 37 for args in calls)
     sync_snowflake.coordinate(snapshot.parent, snapshot.name, 37, connection_factory=lambda: warehouse,
                               dbt_runner=lambda args: 0)
     assert warehouse.published() == before
-    assert json.loads(state_file.read_bytes())["dbt_status"] == "success"
+    recovered = json.loads(state_file.read_bytes())
+    assert recovered["stage"] == "complete" and recovered["dbt_status"] == "success"
+    assert recovered.get("dbt_failed_command") is None
+    assert recovered["last_error"] is None
+    assert recovered["published_this_attempt"] is False
+
+
+@pytest.mark.parametrize("missing", ["manifest.json", "COMPLETE", "events/part-0.parquet", "parcels/part-0.parquet"])
+def test_load_missing_saved_file_retains_other_files_and_reports_recovery(snapshot, monkeypatch, capsys, missing):
+    from scripts import sync_snowflake
+
+    monkeypatch.setattr(sync_snowflake, "load_env", lambda: None)
+    monkeypatch.setattr(sync_snowflake, "load_time_acceleration", lambda root: 37)
+    monkeypatch.setattr(sync_snowflake, "coordinate", lambda *a, **kw: pytest.fail("load with missing file"))
+    (snapshot / missing).unlink()
+    before = {file: file.read_bytes() for file in snapshot.rglob("*") if file.is_file()}
+    assert sync_snowflake.main(["load", "--export-id", snapshot.name,
+                               "--exports-dir", str(snapshot.parent)]) == 2
+    error = capsys.readouterr().err
+    assert "Missing local export file:" in error
+    assert str(snapshot / missing) in error
+    assert "resume" in error and "retained" in error
+    assert {file: file.read_bytes() for file in snapshot.rglob("*") if file.is_file()} == before
+
+
+@pytest.mark.parametrize("missing", ["manifest.json", "COMPLETE", "events.jsonl", "parcels.jsonl", "weather.json"])
+def test_sync_checks_missing_input_before_databricks_authentication(tmp_path, paired_records, monkeypatch, capsys, missing):
+    import databricks.sdk
+
+    from scripts import sync_snowflake
+    from streaming.batches import publish_batch
+
+    batch = publish_batch(tmp_path / "inputs", "paired", *paired_records, 37, {"kind": "replay"})
+    (batch / missing).unlink()
+    before = {file: file.read_bytes() for file in batch.rglob("*") if file.is_file()}
+    monkeypatch.setattr(sync_snowflake, "load_env", lambda: None)
+    monkeypatch.setattr(sync_snowflake, "load_time_acceleration", lambda root: 37)
+    monkeypatch.setattr(databricks.sdk, "WorkspaceClient", lambda **kw: pytest.fail("auth before input validation"))
+    root = tmp_path / "exports"
+    assert sync_snowflake.main(["sync", "--manifest", str(batch / "manifest.json"), "--export-id", "snapshot",
+                               "--exports-dir", str(root), "--job-id", "999"]) == 2
+    error = capsys.readouterr().err
+    assert "Missing input batch file:" in error
+    assert str(batch / missing) in error
+    assert "restore" in error.lower() and "retained" in error
+    assert not root.exists()
+    assert {file: file.read_bytes() for file in batch.rglob("*") if file.is_file()} == before
+
+
+def test_load_missing_export_reports_actionable_error_before_cloud_access(tmp_path, monkeypatch, capsys):
+    from scripts import sync_snowflake
+
+    monkeypatch.setattr(sync_snowflake, "load_env", lambda: None)
+    monkeypatch.setattr(sync_snowflake, "load_time_acceleration", lambda root: 37)
+    root = tmp_path / "exports"
+    assert sync_snowflake.main(["load", "--export-id", "missing", "--exports-dir", str(root)]) == 2
+    error = capsys.readouterr().err
+    assert "Missing local export file:" in error
+    assert str(root / "missing" / "manifest.json") in error
+    assert "resume" in error and "retained" in error
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("missing", ["manifest.json", "events/part-0.parquet", "parcels/part-0.parquet"])
+def test_coordinator_missing_export_preserves_state_and_recovers_without_republishing(snapshot, monkeypatch, missing):
+    from scripts import sync_snowflake
+
+    warehouse = LocalWarehouse(snapshot)
+    monkeypatch.setattr(sync_snowflake, "load_export", local_load)
+    sync_snowflake.coordinate(snapshot.parent, snapshot.name, 37,
+                              connection_factory=lambda: warehouse, dbt_runner=lambda args: 0)
+    before = warehouse.published()
+    state_file = snapshot.parent / ".runs" / "snapshot.json"
+    state = json.loads(state_file.read_bytes())
+    target = snapshot / missing
+    original = target.read_bytes()
+    target.unlink()
+    retained = {file: file.read_bytes() for file in snapshot.rglob("*") if file.is_file()}
+    with pytest.raises(ValueError, match="Missing local export file:"):
+        sync_snowflake.coordinate(snapshot.parent, snapshot.name, 37,
+                                  connection_factory=lambda: pytest.fail("connection before verification"),
+                                  dbt_runner=lambda args: pytest.fail("dbt before verification"))
+    failed = json.loads(state_file.read_bytes())
+    assert failed["stage"] == state["stage"] and failed["last_error"] == "ValueError"
+    assert {file: file.read_bytes() for file in snapshot.rglob("*") if file.is_file()} == retained
+    assert warehouse.published() == before
+    target.write_bytes(original)
+    sync_snowflake.coordinate(snapshot.parent, snapshot.name, 37,
+                              connection_factory=lambda: warehouse, dbt_runner=lambda args: 0)
+    recovered = json.loads(state_file.read_bytes())
+    assert recovered["stage"] == "complete" and recovered["last_error"] is None
+    assert recovered["published_this_attempt"] is False
+    assert warehouse.published() == before
+
+
+@pytest.mark.parametrize("missing", ["manifest.json", "weather.json"])
+def test_resume_reports_missing_retained_input_without_starting_job(tmp_path, paired_records, missing):
+    from scripts import sync_snowflake
+    from streaming.batches import atomic_json, publish_batch
+
+    batch = publish_batch(tmp_path / "inputs", "paired", *paired_records, 37, {"kind": "replay"})
+    state_file = tmp_path / "exports" / ".runs" / "snapshot.json"
+    state = {"export_id": "snapshot", "input_manifest": str(batch / "manifest.json"),
+             "input_hash": digest((batch / "manifest.json").read_bytes()), "batch_id": "paired",
+             "catalog": "c", "job_id": 999, "stage": "input_uploaded"}
+    atomic_json(state_file, state)
+    (batch / missing).unlink()
+    retained = {file: file.read_bytes() for file in batch.rglob("*") if file.is_file()}
+    client = SimpleNamespace(files=SimpleNamespace(), jobs=SimpleNamespace())
+    with pytest.raises(ValueError, match="Missing input batch file:") as failure:
+        sync_snowflake.coordinate(state_file.parent.parent, "snapshot", 37, client=client,
+                                  connection_factory=lambda: pytest.fail("load before input restore"))
+    assert str(batch / missing) in str(failure.value)
+    assert "resume" in str(failure.value)
+    saved = json.loads(state_file.read_bytes())
+    assert all(saved[key] == value for key, value in state.items())
+    assert saved["last_error"] == "ValueError" and "run_id" not in saved
+    assert {file: file.read_bytes() for file in batch.rglob("*") if file.is_file()} == retained
+
+
+def test_cli_missing_credential_file_reports_path_without_raw_exception(snapshot, tmp_path, monkeypatch, capsys):
+    from scripts import sync_snowflake
+
+    monkeypatch.setattr(sync_snowflake, "load_env", lambda: None)
+    monkeypatch.setattr(sync_snowflake, "load_time_acceleration", lambda root: 37)
+    key = tmp_path / "loader.p8"
+
+    def missing_key(*args, **kwargs):
+        raise FileNotFoundError(2, "raw connector details must not be printed", str(key))
+
+    monkeypatch.setattr(sync_snowflake, "coordinate", missing_key)
+    assert sync_snowflake.main(["load", "--export-id", snapshot.name,
+                               "--exports-dir", str(snapshot.parent)]) == 2
+    error = capsys.readouterr().err
+    assert "Missing required local file:" in error and str(key) in error
+    assert "Restore" in error and "retained" in error
+    assert "raw connector details" not in error and "Traceback" not in error
+    assert read_export(snapshot, 37)
 
 
 def test_failed_load_never_starts_dbt_and_second_local_runner_is_rejected(snapshot, monkeypatch):

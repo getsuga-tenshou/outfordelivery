@@ -63,5 +63,29 @@ def test_still_alerts_on_returned(notifier):
     assert "P1" in notifier.published[0]["Subject"]
 
 
+@pytest.mark.parametrize("breached", [False, True])
+def test_repeat_returned_update_still_alerts(notifier, breached):
+    image = _image(status="RETURNED", breached=breached)
+    assert notifier.handler({"Records": [_record(image, image)]}, None) == {"alerts": 1}
+    assert len(notifier.published) == 1
+
+
+def test_return_and_breach_in_same_update_publish_one_alert(notifier):
+    event = {"Records": [_record(_image(status="RETURNED", breached=True), _image(breached=False))]}
+    assert notifier.handler(event, None) == {"alerts": 1}
+    assert len(notifier.published) == 1
+
+
+def test_breach_can_alert_again_after_it_clears(notifier):
+    event = {"Records": [
+        _record(_image(breached=True), _image(breached=False)),
+        _record(_image(breached=True), _image(breached=True)),
+        _record(_image(breached=False), _image(breached=True)),
+        _record(_image(breached=True), _image(breached=False)),
+    ]}
+    assert notifier.handler(event, None) == {"alerts": 2}
+    assert len(notifier.published) == 2
+
+
 def test_scheduled_tick_does_nothing(notifier):
     assert notifier.handler({"source": "aws.events"}, None) == {"ok": True}

@@ -21,6 +21,10 @@ run "native_without_uc_credentials" {
     condition     = snowflake_service_user.loader[0].default_role == "OFD_LOADER" && snowflake_warehouse.ofd.auto_suspend == 60
     error_message = "Transfers must retain dedicated loader permissions and warehouse cost controls."
   }
+  assert {
+    condition     = length(snowflake_grant_privileges_to_account_role.transformer_lake_select) == 0 && toset(keys(snowflake_grant_privileges_to_account_role.transformer_native)) == toset(["SILVER_PARCEL_EVENTS", "SILVER_PARCELS", "LOAD_AUDIT"])
+    error_message = "Native dbt must read only published Silver sources and load audit, without future grants exposing loading tables or the lock."
+  }
 }
 
 run "compatible_storage_iceberg" {
@@ -35,6 +39,10 @@ run "compatible_storage_iceberg" {
   assert {
     condition     = length(snowflake_catalog_integration_iceberg_rest.uc) == 1 && length(snowflake_iceberg_table_from_rest.silver) == 2 && length(snowflake_table.native) == 0 && length(snowflake_service_user.loader) == 0
     error_message = "Compatible mode must retain the original integration without native objects."
+  }
+  assert {
+    condition     = toset(keys(snowflake_grant_privileges_to_account_role.transformer_lake_select)) == toset(["TABLES", "ICEBERG TABLES"])
+    error_message = "Compatible Iceberg mode must retain its existing future source reads."
   }
 }
 
